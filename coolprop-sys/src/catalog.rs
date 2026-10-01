@@ -29,17 +29,6 @@ impl Variant {
     /// Matches a canonical CoolProp name to a `Variant`. No alias handling;
     /// `None` for any non-curated name.
     pub fn from_name(name: &str) -> Option<Self> {
-        let normalized = normalize_name(name);
-        Self::ALL
-            .iter()
-            .copied()
-            .find(|v| normalize_name(v.name()) == normalized)
+        Self::ALL.iter().copied().find(|v| v.name() == name)
     }
-}
-
-fn normalize_name(name: &str) -> String {
-    name.chars()
-        .filter(|ch| ch.is_ascii_alphanumeric())
-        .map(|ch| ch.to_ascii_lowercase())
-        .collect()
 }

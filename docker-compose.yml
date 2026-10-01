@@ -1,0 +1,120 @@
+# Containerised test runner for coolprop-rs, mirroring cycle-forge's setup.
+# CoolProp (C++) is compiled to wasm via emscripten; the wasm test binaries
+# are executed with node (see .cargo/config.toml runner).
+#
+#   docker compose run --rm test-native   # cargo test on the host target
+#   docker compose run --rm test-wasm      # cargo test on wasm32-unknown-emscripten
+#
+# The CoolProp submodule must be checked out (it is mounted from the host):
+#   git submodule update --init --recursive
+#
+#   docker compose run --rm build-npm     # build the @luisbedoia/coolprop-rs-wasm artifacts
+
+# Fluid catalog shipped by the wasm/npm package. Overrides coolprop-sys's
+# native default (CURATED_FLUIDS) via COOLPROP_FLUIDS — see coolprop-sys/build.rs.
+# Shared by build-npm (the published artifact) and test-wasm (so the Rust
+# catalog test validates that every listed fluid, blends included, opens).
+# The blends expand to components that must also be present: R410A = R32+R125,
+# R404A = R125+R143a+R134a, R507A = R125+R143a.
+x-coolprop-fluids: &coolprop_fluids "Water,Air,Ammonia,R134a,R22,Nitrogen,Oxygen,CarbonDioxide,Hydrogen,Helium,Argon,Methane,CarbonMonoxide,R32,R410A,R1234yf,R1234ze(E),R404A,R507A,R125,R143a,R152A,n-Pentane,Isopentane,n-Butane,IsoButane,Toluene,R245fa,Ethanol,n-Propane"
+
+services:
+  test-native:
+    build: .
+    working_dir: /work
+    volumes:
+      - .:/work
+      - cargo-registry:/usr/local/cargo/registry
+      - cargo-git:/usr/local/cargo/git
+      - target-native:/work/target-native
+    environment:
+      CARGO_TARGET_DIR: /work/target-native
+      CARGO_BUILD_JOBS: "1"
+      MAKEFLAGS: "-j1"
+      CMAKE_BUILD_PARALLEL_LEVEL: "1"
+    command: cargo test --workspace -- --nocapture --test-threads=1
+
+  test-wasm:
+    build: .
+    working_dir: /work
+    volumes:
+      - .:/work
+      - cargo-registry:/usr/local/cargo/registry
+      - cargo-git:/usr/local/cargo/git
+      - target-wasm:/work/target-wasm
+    environment:
+      CARGO_TARGET_DIR: /work/target-wasm
+      CARGO_BUILD_JOBS: "1"
+      MAKEFLAGS: "-j1"
+      CMAKE_BUILD_PARALLEL_LEVEL: "1"
+      COOLPROP_FLUIDS: *coolprop_fluids
+      # Test-only link flags, kept out of .cargo/config.toml so they don't leak
+      # into the npm/web build. EXIT_RUNTIME=1 propagates the test exit code;
+      # NODERAWFS=1 lets std::fs read the snapshot fixtures from the host FS.
+      CARGO_TARGET_WASM32_UNKNOWN_EMSCRIPTEN_RUSTFLAGS: >-
+        -C link-arg=-sALLOW_MEMORY_GROWTH=1
+        -C link-arg=-sEXIT_RUNTIME=1
+        -C link-arg=-sNODERAWFS=1
+    command: cargo test -p coolprop --target wasm32-unknown-emscripten -- --test-threads=1
+
+  # Builds the browser-facing wasm module + loader for the @luisbedoia/coolprop-rs-wasm
+  # npm package and copies the artifacts into wasm-pkg/dist/. Web link flags
+  # (MODULARIZE/EXPORT_ES6/ENVIRONMENT=web) are injected here, never in
+  # .cargo/config.toml, so they can't collide with the test flags above.
+  # Uses its own target dir so it doesn't thrash the test-wasm build cache.
+  build-npm:
+    build: .
+    working_dir: /work
+    volumes:
+      - .:/work
+      - cargo-registry:/usr/local/cargo/registry
+      - cargo-git:/usr/local/cargo/git
+      - target-web:/work/target-web
+    environment:
+      CARGO_TARGET_DIR: /work/target-web
+      CARGO_BUILD_JOBS: "1"
+      MAKEFLAGS: "-j1"
+      CMAKE_BUILD_PARALLEL_LEVEL: "1"
+      COOLPROP_FLUIDS: *coolprop_fluids
+      CARGO_TARGET_WASM32_UNKNOWN_EMSCRIPTEN_RUSTFLAGS: >-
+        -C link-arg=-sALLOW_MEMORY_GROWTH=1
+        -C link-arg=-sEXIT_RUNTIME=0
+        -C link-arg=-sENVIRONMENT=web
+        -C link-arg=-sMODULARIZE=1
+        -C link-arg=-sEXPORT_ES6=1
+        -C link-arg=-sEXPORT_NAME=createCoolPropModule
+        -C link-arg=-sEXPORTED_FUNCTIONS=['_main','_malloc','_free','_coolprop_version','_coolprop_catalog','_coolprop_solve','_coolprop_saturation','_coolprop_isolines','_coolprop_free_string']
+        -C link-arg=-sEXPORTED_RUNTIME_METHODS=['ccall','cwrap','UTF8ToString','stringToUTF8','lengthBytesUTF8','HEAPU8']
+    command: >
+      bash -c "cargo build --release -p coolprop-wasm --target wasm32-unknown-emscripten &&
+      OUT=/work/target-web/wasm32-unknown-emscripten/release &&
+      mkdir -p /work/wasm-pkg/dist &&
+      cp \"$$OUT/coolprop.js\"   /work/wasm-pkg/dist/coolprop.js &&
+      cp \"$$OUT/coolprop.wasm\" /work/wasm-pkg/dist/coolprop.wasm &&
+      echo 'artefactos copiados a wasm-pkg/dist/'"
+
+  # Browser tests for the @luisbedoia/coolprop-rs-wasm npm package, run in headless Chromium
+  # via Vitest + Playwright. The wasm module is web-only, so there is no node
+  # test target by design. Requires the dist/ artifacts, so run build-npm first:
+  #
+  #   docker compose run --rm build-npm
+  #   docker compose run --rm test-npm
+  #
+  # node_modules lives in its own volume so the container installs Linux-native
+  # deps instead of inheriting the host's (e.g. macOS) binaries. The Playwright
+  # image version must match the `playwright` dependency in wasm-pkg.
+  test-npm:
+    image: mcr.microsoft.com/playwright:v1.63.0-noble
+    working_dir: /work/wasm-pkg
+    volumes:
+      - .:/work
+      - npm-node-modules:/work/wasm-pkg/node_modules
+    command: bash -c "npm ci && npm test"
+
+volumes:
+  cargo-registry:
+  cargo-git:
+  target-native:
+  target-wasm:
+  target-web:
+  npm-node-modules:

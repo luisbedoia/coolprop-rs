@@ -1,0 +1,4 @@
+[submodule "coolprop-sys/CoolProp"]
+	path = coolprop-sys/CoolProp
+	url = https://github.com/CoolProp/CoolProp.git
+	ignore = dirty

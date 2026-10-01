@@ -1,0 +1,25 @@
+[package]
+name = "coolprop"
+description = "Safe Rust wrapper over CoolProp"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[features]
+default = ["serde"]
+serde = ["dep:serde", "coolprop-sys/serde"]
+autodiff = ["dep:num-dual"]
+
+[dependencies]
+coolprop-sys = { workspace = true }
+serde = { workspace = true, optional = true }
+num-dual = { workspace = true, optional = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }
+
+[lints]
+workspace = true

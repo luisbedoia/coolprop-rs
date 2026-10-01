@@ -1,0 +1,7 @@
+/target
+/target-*
+**/*.rs.bk
+.DS_Store
+node_modules/
+wasm-pkg/dist/
+wasm-pkg/test/__screenshots__/

@@ -1,0 +1,19 @@
+[package]
+name = "coolprop-sys"
+description = "Raw FFI bindings to CoolProp"
+links = "CoolProp"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[features]
+serde = ["dep:serde"]
+
+[dependencies]
+serde = { workspace = true, optional = true }
+
+[lints]
+workspace = true

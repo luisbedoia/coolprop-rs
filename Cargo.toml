@@ -1,0 +1,41 @@
+[workspace]
+members = ["coolprop-sys", "coolprop", "coolprop-wasm"]
+resolver = "3"
+
+[workspace.package]
+version = "0.1.0"
+authors = ["Luis Arias <ariasb.luis@gmail.com>"]
+edition = "2024"
+rust-version = "1.99"
+license = "MIT"
+repository = "https://github.com/luisbedoia/coolprop-rs"
+
+[workspace.dependencies]
+coolprop-sys = { path = "coolprop-sys", version = "0.1.0" }
+coolprop = { path = "coolprop", version = "0.1.0" }
+
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+num-dual = "0.15"
+
+# coolprop-sys build-dependencies
+bindgen = "0.73"
+cmake = "0.1.58"
+flate2 = "1.1"
+prettyplease = "0.3"
+proc-macro2 = "1.0.107"
+quote = "1.0.47"
+syn = { version = "3", default-features = false }
+
+[workspace.lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+missing_debug_implementations = "warn"
+unreachable_pub = "warn"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+undocumented_unsafe_blocks = "warn"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1

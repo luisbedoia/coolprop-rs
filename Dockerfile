@@ -7,7 +7,9 @@ ARG RUST_VERSION=1.99.0
 RUN apt-get update && apt-get install -y --no-install-recommends \
       build-essential cmake git ca-certificates curl python3 pkg-config \
       libclang-dev clang \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    # The repo (and CoolProp's CPM cache) is bind-mounted with the host's UID.
+    && git config --system --add safe.directory '*'
 
 ENV RUSTUP_HOME=/usr/local/rustup \
     CARGO_HOME=/usr/local/cargo \

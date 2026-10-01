@@ -21,7 +21,6 @@ num-dual = "0.15"
 # coolprop-sys build-dependencies
 bindgen = "0.73"
 cmake = "0.1.58"
-flate2 = "1.1"
 prettyplease = "0.3"
 proc-macro2 = "1.0.107"
 quote = "1.0.47"

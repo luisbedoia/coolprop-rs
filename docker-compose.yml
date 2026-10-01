@@ -55,7 +55,7 @@ services:
         -C link-arg=-sALLOW_MEMORY_GROWTH=1
         -C link-arg=-sEXIT_RUNTIME=1
         -C link-arg=-sNODERAWFS=1
-    command: cargo test -p coolprop --target wasm32-unknown-emscripten -- --test-threads=1
+    command: cargo test -p coolprop-sys -p coolprop --target wasm32-unknown-emscripten -- --test-threads=1
 
   # Builds the browser-facing wasm module + loader for the @luisbedoia/coolprop-rs-wasm
   # npm package and copies the artifacts into wasm-pkg/dist/. Web link flags

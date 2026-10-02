@@ -7,8 +7,8 @@
  *   const s = water.state({ pressure: 101325, temperature: 298.15 });
  *   s.enthalpy;                                 // J/kg
  *
- * Works on the main thread and inside a Web Worker. Calls are synchronous;
- * move heavy batches (`states`) to a worker to keep the UI responsive.
+ * Calls are synchronous. To keep a UI responsive, use `loadCoolPropWorker`
+ * instead: same API, solved in a Web Worker, returning promises.
  */
 
 import type {
@@ -27,6 +27,8 @@ import type {
 } from "./types.js";
 
 export type * from "./types.js";
+export { loadCoolPropWorker } from "./worker-client.js";
+export type { CoolPropWorker, WorkerFluid, WorkerOptions } from "./worker-client.js";
 
 /** A curated fluid, ready to solve states. */
 export interface Fluid {
@@ -44,7 +46,8 @@ export interface Fluid {
   states(inputs: readonly StateInputs[]): (State | CoolPropError)[];
 }
 
-export interface CoolProp {
+/** What both the synchronous and the worker APIs know without solving. */
+export interface CoolPropInfo {
   /** Underlying CoolProp version, e.g. "8.0.0". */
   version(): string;
   /** Every curated fluid. */
@@ -57,6 +60,9 @@ export interface CoolProp {
   properties(): readonly PropertyInfo[];
   /** Phases a `State` can be in. */
   phases(): readonly PhaseInfo[];
+}
+
+export interface CoolProp extends CoolPropInfo {
   /** Opens a fluid by canonical name or alias. Throws {@link CoolPropError}. */
   fluid(name: string): Fluid;
 }

@@ -57,10 +57,36 @@ Failures throw `CoolPropError` with a `kind`:
 - `invalid_input`: malformed request, e.g. an unsupported input pair.
 - `coolprop`: CoolProp could not solve it, e.g. a state outside the EOS range.
 
-## Web Workers
+## Without blocking the UI
 
-The module loads on the main thread and inside module workers. Calls are
-synchronous, so run large batches in a worker to keep the UI responsive.
+`loadCoolProp` solves synchronously on the calling thread. For interactive
+pages use `loadCoolPropWorker`: the same API, solved in a Web Worker that
+ships with the package, returning promises.
+
+```ts
+import { loadCoolPropWorker } from "@luisbedoia/coolprop-rs-wasm";
+
+const cp = await loadCoolPropWorker();
+cp.catalog();                              // catalogs and schema stay synchronous
+const water = await cp.fluid("Water");
+const s = await water.state({ pressure: 101325, temperature: 298.15 });
+const batch = await water.states(points);  // the main thread keeps running
+cp.terminate();                            // pending and later calls reject
+```
+
+The worker is created with `new Worker(new URL("./worker.js", import.meta.url))`,
+the pattern bundlers recognize; Vite bundles it (and the `.wasm`) with no
+configuration. If your setup cannot resolve it, create a worker from the
+package's `./worker` entry yourself and pass it in. With Vite:
+
+```ts
+import CoolPropWorker from "@luisbedoia/coolprop-rs-wasm/worker?worker";
+
+const cp = await loadCoolPropWorker({ worker: new CoolPropWorker() });
+```
+
+Calls already running in the worker cannot be interrupted; `terminate()`
+stops the worker and rejects whatever was pending.
 
 ## Building from source
 

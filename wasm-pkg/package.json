@@ -28,6 +28,10 @@
     ".": {
       "types": "./lib/index.d.ts",
       "import": "./lib/index.js"
+    },
+    "./worker": {
+      "types": "./lib/worker.d.ts",
+      "import": "./lib/worker.js"
     }
   },
   "files": [

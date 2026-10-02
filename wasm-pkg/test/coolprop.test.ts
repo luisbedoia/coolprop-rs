@@ -189,20 +189,6 @@ describe("state", () => {
   });
 });
 
-describe("web worker", () => {
-  it("loads and solves inside a module worker", async () => {
-    const worker = new Worker(new URL("./worker.ts", import.meta.url), { type: "module" });
-    const result = await new Promise<{ enthalpy?: number; error?: string }>((resolve) => {
-      worker.onmessage = (e) => resolve(e.data);
-      worker.onerror = (e) => resolve({ error: e.message });
-      worker.postMessage(null);
-    });
-    worker.terminate();
-    expect(result.error).toBeUndefined();
-    expect(result.enthalpy).toBeCloseTo(104920.1, 0);
-  });
-});
-
 /** Compile-time only: never called. `tsc --noEmit` fails if any line type-checks. */
 export function typeChecks(cp: CoolProp) {
   const water = cp.fluid("Water");

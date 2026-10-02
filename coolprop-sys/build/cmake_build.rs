@@ -62,14 +62,12 @@ fn apply_emscripten_config(cfg: &mut cmake::Config) {
         .join("Emscripten.cmake");
     cfg.define("CMAKE_TOOLCHAIN_FILE", toolchain.to_string_lossy().as_ref());
 
-    cfg.define(
-        "CMAKE_CXX_FLAGS_RELEASE",
-        "-O3 -DNDEBUG -fexceptions -fwasm-exceptions",
-    )
-    .define(
-        "CMAKE_C_FLAGS_RELEASE",
-        "-O3 -DNDEBUG -fexceptions -fwasm-exceptions",
-    );
+    // Optimization flags for CoolProp's C++, overridable with
+    // COOLPROP_WASM_OPT (e.g. "-Os -flto") to trade speed for size.
+    let opt = env::var("COOLPROP_WASM_OPT").unwrap_or_else(|_| "-O3".to_owned());
+    let flags = format!("{opt} -DNDEBUG -fexceptions -fwasm-exceptions");
+    cfg.define("CMAKE_CXX_FLAGS_RELEASE", &flags)
+        .define("CMAKE_C_FLAGS_RELEASE", &flags);
 }
 
 fn locate_static_lib(dst: &Path, install_root: &Path, is_emscripten: bool) -> PathBuf {

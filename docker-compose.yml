@@ -76,7 +76,17 @@ services:
       MAKEFLAGS: "-j1"
       CMAKE_BUILD_PARALLEL_LEVEL: "1"
       COOLPROP_FLUIDS: *coolprop_fluids
+      # Optimize the shipped module for size: CoolProp's C++ with -Os and LTO
+      # (see coolprop-sys/build/cmake_build.rs), the final link with -Oz.
+      # ~20% smaller (~14% gzip) for ~25% slower state solves. Tests keep -O3.
+      COOLPROP_WASM_OPT: -Os -flto
+      # -wasm-enable-eh: emcc does not pass it to the LTO code generator, which
+      # then miscompiles C++ try/catch — CoolProp's exceptions escape its C API
+      # and abort the module. The browser suite (test-npm) covers this path.
       CARGO_TARGET_WASM32_UNKNOWN_EMSCRIPTEN_RUSTFLAGS: >-
+        -C link-arg=-Oz
+        -C link-arg=-flto
+        -C link-arg=-Wl,-mllvm,-wasm-enable-eh
         -C link-arg=-sALLOW_MEMORY_GROWTH=1
         -C link-arg=-sEXIT_RUNTIME=0
         -C link-arg=-sENVIRONMENT=web,worker

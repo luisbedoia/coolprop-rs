@@ -78,6 +78,7 @@ impl BuildEnv {
         println!("cargo:rerun-if-changed=CMakeLists.txt");
         println!("cargo:rerun-if-env-changed=COOLPROP_FLUIDS");
         println!("cargo:rerun-if-env-changed=CPM_SOURCE_CACHE");
+        println!("cargo:rerun-if-env-changed=COOLPROP_WASM_OPT");
     }
 }
 

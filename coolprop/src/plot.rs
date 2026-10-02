@@ -310,8 +310,8 @@ pub struct PropertyPlot<'a> {
     dome: SaturationDome,
 }
 
-/// Default saturation-dome resolution.
-const DOME_POINTS: usize = 60;
+/// Default saturation-dome resolution: states per branch.
+pub const DOME_POINTS: usize = 60;
 
 impl<'a> PropertyPlot<'a> {
     /// Plot over [`Limits::default_for`] the fluid.
@@ -319,7 +319,18 @@ impl<'a> PropertyPlot<'a> {
         Self::with_limits(fluid, Limits::default_for(fluid))
     }
 
+    /// Plot over `limits`, with the default dome resolution.
     pub fn with_limits(fluid: &'a Fluid, limits: Limits) -> Result<Self, PropsError> {
+        Self::with_resolution(fluid, limits, DOME_POINTS)
+    }
+
+    /// Plot over `limits`, tracing the dome with about `dome_points` states
+    /// per branch (at least 3).
+    pub fn with_resolution(
+        fluid: &'a Fluid,
+        limits: Limits,
+        dome_points: usize,
+    ) -> Result<Self, PropsError> {
         let ok = limits.t_min.is_finite()
             && limits.p_min > 0.0
             && limits.t_min < limits.t_max
@@ -329,7 +340,7 @@ impl<'a> PropertyPlot<'a> {
                 "invalid plot limits: {limits:?}"
             )));
         }
-        let dome = saturation_dome(fluid, DOME_POINTS)?;
+        let dome = saturation_dome(fluid, dome_points)?;
         Ok(Self {
             fluid,
             limits,

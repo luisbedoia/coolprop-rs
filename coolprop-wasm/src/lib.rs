@@ -40,23 +40,23 @@ pub fn schema() -> String {
 }
 
 /// Request `{fluid, diagram, isolines?: [{kind, values?, count?, unit?}], points?,
-/// limits?}` → `{"ok": DiagramData}`: the axes with their ranges, the
-/// saturation dome and the requested isoline families, all projected onto
-/// the diagram's axes. Unsolvable points are `null` (a break in the curve).
+/// dome_points?, limits?}` → `{"ok": DiagramData}`: the axes with their
+/// ranges, the saturation dome and the requested isoline families, all
+/// projected onto the diagram's axes. Unsolvable points are `null` (a break
+/// in the curve).
+///
+/// The work a request asks for is bounded (see [`MAX_POINTS`],
+/// [`MAX_DOME_POINTS`], [`MAX_ISOLINES`], [`MAX_ISOLINE_STATES`]): past the
+/// bounds it is rejected as `invalid_input`, so no request can stall the
+/// page.
 pub fn diagram(request: &str) -> String {
     respond(request, |req: DiagramRequest| {
         let d = Diagram::from_id(&req.diagram)
             .ok_or_else(|| PropsError::InvalidInput(format!("unknown diagram: {}", req.diagram)))?;
-        if !(2..=MAX_POINTS).contains(&req.points) {
-            return Err(PropsError::InvalidInput(format!(
-                "points must be between 2 and {MAX_POINTS}"
-            )));
-        }
+        req.check_bounds()?;
         with_fluid(&req.fluid, |f| {
-            let plot = match req.limits {
-                Some(limits) => PropertyPlot::with_limits(f, limits)?,
-                None => PropertyPlot::new(f)?,
-            };
+            let limits = req.limits.unwrap_or_else(|| Limits::default_for(f));
+            let plot = PropertyPlot::with_resolution(f, limits, req.dome_points)?;
             let (x, y) = (d.x.property, d.y.property);
             let project = |states: &[State]| Curve {
                 x: states.iter().map(|s| x.of(s)).collect(),
@@ -76,7 +76,7 @@ pub fn diagram(request: &str) -> String {
                     (Some(values), _) => values.clone(),
                     (None, count) => plot.suggested_values(
                         kind,
-                        count.unwrap_or(5).min(50),
+                        count.unwrap_or(DEFAULT_COUNT),
                         &d,
                         spec.unit.unwrap_or_default(),
                     ),
@@ -158,8 +158,18 @@ struct StatesRequest {
     inputs: Vec<Map<String, Value>>,
 }
 
-/// Isoline resolution cap: a request cannot stall the page.
-const MAX_POINTS: usize = 2000;
+/// Most states per isoline.
+pub const MAX_POINTS: usize = 500;
+/// Most states per branch of the saturation dome.
+pub const MAX_DOME_POINTS: usize = 500;
+/// Most isolines per request, across families.
+pub const MAX_ISOLINES: usize = 30;
+/// Most isoline states per request: isolines × points. At this budget, in
+/// desktop Chromium, a request takes ~80 ms for the median fluid and family,
+/// ~0.27 s at the 95th percentile and ~1.2 s for the slowest (R143a).
+pub const MAX_ISOLINE_STATES: usize = 5000;
+/// Suggested isolines per family when the request gives no `count`.
+const DEFAULT_COUNT: usize = 5;
 
 #[derive(Deserialize)]
 struct DiagramRequest {
@@ -169,12 +179,54 @@ struct DiagramRequest {
     isolines: Vec<IsolineSpec>,
     #[serde(default = "default_points")]
     points: usize,
+    #[serde(default = "default_dome_points")]
+    dome_points: usize,
     #[serde(default)]
     limits: Option<Limits>,
 }
 
 fn default_points() -> usize {
     100
+}
+
+fn default_dome_points() -> usize {
+    coolprop::plot::DOME_POINTS
+}
+
+impl DiagramRequest {
+    fn check_bounds(&self) -> Result<(), PropsError> {
+        let invalid = |m: String| Err(PropsError::InvalidInput(m));
+        if !(2..=MAX_POINTS).contains(&self.points) {
+            return invalid(format!("points must be between 2 and {MAX_POINTS}"));
+        }
+        if !(3..=MAX_DOME_POINTS).contains(&self.dome_points) {
+            return invalid(format!(
+                "dome_points must be between 3 and {MAX_DOME_POINTS}"
+            ));
+        }
+        let isolines: usize = self
+            .isolines
+            .iter()
+            .map(|s| match &s.values {
+                Some(values) => values.len(),
+                None => s.count.unwrap_or(DEFAULT_COUNT),
+            })
+            .fold(0, usize::saturating_add);
+        if isolines > MAX_ISOLINES {
+            return invalid(format!(
+                "at most {MAX_ISOLINES} isolines per request, got {isolines}"
+            ));
+        }
+        let states = isolines.saturating_mul(self.points);
+        if states > MAX_ISOLINE_STATES {
+            return invalid(format!(
+                "at most {MAX_ISOLINE_STATES} isoline states (isolines × points) \
+                 per request, got {isolines} × {} = {states}",
+                self.points
+            ));
+        }
+        Ok(())
+    }
 }
 
 #[derive(Deserialize)]

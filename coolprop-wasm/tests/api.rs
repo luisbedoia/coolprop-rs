@@ -265,3 +265,53 @@ fn diagram_errors_are_classified() {
         "invalid_input"
     );
 }
+
+/// Every knob of a diagram request's work is bounded, so a request cannot
+/// stall the page; the bounds themselves are accepted.
+#[test]
+fn diagram_work_is_bounded() {
+    use coolprop_wasm::{MAX_DOME_POINTS, MAX_ISOLINE_STATES, MAX_ISOLINES, MAX_POINTS};
+    let run = |extra: Value| {
+        let mut req = json!({"fluid": "Water", "diagram": "pressure_enthalpy"});
+        req.as_object_mut()
+            .unwrap()
+            .extend(extra.as_object().unwrap().clone());
+        call(coolprop_wasm::diagram, req)
+    };
+    let rejected = |extra: Value| error_kind(&run(extra)) == "invalid_input";
+
+    assert!(rejected(json!({"points": MAX_POINTS + 1})));
+    assert!(rejected(json!({"points": 1})));
+    assert!(rejected(json!({"dome_points": MAX_DOME_POINTS + 1})));
+    assert!(rejected(json!({"dome_points": 2})));
+    let many: Vec<f64> = (0..=MAX_ISOLINES).map(|i| 300.0 + i as f64).collect();
+    assert!(rejected(
+        json!({"isolines": [{"kind": "temperature", "values": many}]})
+    ));
+    assert!(rejected(
+        json!({"isolines": [{"kind": "temperature", "count": MAX_ISOLINES + 1}]})
+    ));
+    // Bounds add up across families.
+    let half = MAX_ISOLINES / 2 + 1;
+    assert!(rejected(json!({"isolines": [
+        {"kind": "temperature", "count": half},
+        {"kind": "entropy", "count": half},
+    ]})));
+
+    // Isolines × points is bounded too.
+    let points = MAX_ISOLINE_STATES / 20 + 1;
+    assert!(points <= MAX_POINTS);
+    assert!(rejected(json!({"points": points,
+                            "isolines": [{"kind": "temperature", "count": 20}]})));
+    let at_budget = run(json!({"points": MAX_ISOLINE_STATES / 10,
+                               "isolines": [{"kind": "temperature", "count": 10}]}));
+    assert_eq!(ok(&at_budget)["isolines"].as_array().unwrap().len(), 10);
+
+    // At the bounds: accepted, at the requested resolution.
+    let v = run(json!({"points": 2, "dome_points": MAX_DOME_POINTS,
+                       "isolines": [{"kind": "temperature", "count": MAX_ISOLINES}]}));
+    let d = ok(&v);
+    assert_eq!(d["isolines"].as_array().unwrap().len(), MAX_ISOLINES);
+    let dome = d["dome"]["liquid"]["x"].as_array().unwrap().len();
+    assert!(dome > MAX_DOME_POINTS * 9 / 10, "{dome} dome points");
+}

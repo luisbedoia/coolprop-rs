@@ -233,12 +233,22 @@ export interface IsolineSpec {
   unit?: DisplayUnit;
 }
 
+/**
+ * A diagram to compute. Its work is bounded: past these limits the request is
+ * rejected with an `invalid_input` error.
+ */
 export interface DiagramRequest {
   /** A `DiagramInfo.id`. */
   diagram: string;
+  /**
+   * At most 30 isolines in all (explicit values or `count`s), and at most
+   * 5000 isoline states: isolines × `points`.
+   */
   isolines?: IsolineSpec[];
-  /** Points per isoline, 2–2000. Default 100. */
+  /** States per isoline, 2–500. Default 100. */
   points?: number;
+  /** States per branch of the saturation dome, 3–500. Default 60. */
+  dome_points?: number;
   /** Default: CoolProp's plot domain for the fluid. */
   limits?: Limits;
 }

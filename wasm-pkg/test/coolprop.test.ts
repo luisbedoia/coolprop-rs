@@ -173,6 +173,26 @@ describe("diagrams", () => {
     [50, 100, 150, 200, 250, 300, 350].forEach((c, i) => expect(celsius[i]).toBeCloseTo(c, 9));
   });
 
+  it("traces the dome at the requested resolution, within bounds", () => {
+    const water = cp.fluid("Water");
+    const fine = water.diagram({ diagram: "temperature_entropy", dome_points: 200 });
+    expect(fine.dome.vapor.x.length).toBeGreaterThan(180);
+    expect(() => water.diagram({ diagram: "temperature_entropy", dome_points: 501 })).toThrowError(
+      expect.objectContaining({ kind: "invalid_input" }),
+    );
+    expect(() =>
+      water.diagram({ diagram: "temperature_entropy", isolines: [{ kind: "pressure", count: 31 }] }),
+    ).toThrowError(expect.objectContaining({ kind: "invalid_input" }));
+    // 20 isolines × 300 points exceeds the 5000-state budget.
+    expect(() =>
+      water.diagram({
+        diagram: "temperature_entropy",
+        points: 300,
+        isolines: [{ kind: "pressure", count: 20 }],
+      }),
+    ).toThrowError(expect.objectContaining({ kind: "invalid_input" }));
+  });
+
   it("marks unsolvable points as null breaks", () => {
     // This isentrope leaves the domain partway.
     const [iso] = cp.fluid("Water").diagram({

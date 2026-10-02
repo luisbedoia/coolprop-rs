@@ -1,39 +1,40 @@
 name: Deploy @luisbedoia/coolprop-rs-wasm
 
-# Publishes the npm package to GitHub Packages when a v* tag is pushed (e.g. v0.1.0).
-# The version is derived from the tag, the wasm artifacts are built in Docker
-# (emscripten + Rust, mirroring `docker compose run --rm build-npm`), and the
-# package is published to npm.pkg.github.com using the workflow's GITHUB_TOKEN —
-# no extra secret is required.
+# Publishes the npm package to GitHub Packages when a version tag is pushed
+# (e.g. v0.1.0). The full CI runs first; the package is built from the exact
+# wasm artifacts that passed it. The tag must match the Cargo workspace
+# version (which CI keeps equal to wasm-pkg/package.json). Publishing uses
+# the workflow's GITHUB_TOKEN; no extra secret is required.
 on:
   push:
     tags:
       - "v*"
 
 jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+
   publish:
+    needs: ci
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write # publish to GitHub Packages
     steps:
-      - name: Checkout (with CoolProp submodule)
-        uses: actions/checkout@v7
+      - uses: actions/checkout@v7
+
+      - name: Tag matches the Cargo workspace version
+        run: |
+          cargo_version=$(sed -n '/^\[workspace.package\]/,/^\[/s/^version = "\(.*\)"/\1/p' Cargo.toml)
+          echo "tag: $GITHUB_REF_NAME, Cargo: $cargo_version"
+          test "$GITHUB_REF_NAME" = "v$cargo_version"
+
+      - uses: actions/download-artifact@v8
         with:
-          submodules: recursive
+          name: wasm-dist
+          path: wasm-pkg/dist/
 
-      - name: Derive version from tag
-        id: version
-        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
-
-      - name: Build wasm artifacts
-        run: docker compose run --rm build-npm
-
-      - name: Run browser test suite
-        run: docker compose run --rm test-npm
-
-      - name: Setup Node
-        uses: actions/setup-node@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: "24"
           registry-url: "https://npm.pkg.github.com"
@@ -43,10 +44,7 @@ jobs:
         working-directory: wasm-pkg
         run: npm ci
 
-      - name: Set package version
-        working-directory: wasm-pkg
-        run: npm version "${{ steps.version.outputs.version }}" --no-git-tag-version --allow-same-version
-
+      # `prepack` compiles the TypeScript facade into lib/.
       - name: Publish to GitHub Packages
         working-directory: wasm-pkg
         run: npm publish

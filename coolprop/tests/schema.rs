@@ -117,7 +117,7 @@ fn pairs_match_what_state_accepts() {
 fn phases_cover_every_phase() {
     let names: Vec<Phase> = schema::phases().map(|p| p.name).collect();
     assert_eq!(names, Phase::ALL);
-    assert!(schema::phases().all(|p| !p.description.is_empty()));
+    assert!(schema::phases().all(|p| !p.label.is_empty() && !p.description.is_empty()));
 }
 
 #[test]

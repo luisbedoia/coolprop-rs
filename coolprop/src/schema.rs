@@ -54,6 +54,8 @@ pub struct PropertyInfo {
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct PhaseInfo {
     pub name: Phase,
+    /// Short name for display, e.g. "two-phase".
+    pub label: &'static str,
     pub description: &'static str,
 }
 
@@ -226,6 +228,7 @@ pub fn properties() -> &'static [PropertyInfo] {
 pub fn phases() -> impl ExactSizeIterator<Item = PhaseInfo> {
     Phase::ALL.into_iter().map(|name| PhaseInfo {
         name,
+        label: name.label(),
         description: name.description(),
     })
 }

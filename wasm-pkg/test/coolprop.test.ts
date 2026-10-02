@@ -103,6 +103,7 @@ describe("schema", () => {
   it("lists exactly the inputs, phases and properties in the TS types", () => {
     expect(cp.inputs().map((i) => i.name)).toEqual(INPUT_NAMES);
     expect(cp.phases().map((p) => p.name)).toEqual(PHASES);
+    expect(cp.phases().find((p) => p.name === "two_phase")?.label).toBe("two-phase");
     expect(cp.properties().map((p) => p.name)).toEqual(PROPERTY_NAMES);
   });
 

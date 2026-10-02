@@ -151,6 +151,8 @@ export interface PropertyInfo {
 
 export interface PhaseInfo {
   name: Phase;
+  /** Short name for display, e.g. "two-phase". */
+  label: string;
   description: string;
 }
 

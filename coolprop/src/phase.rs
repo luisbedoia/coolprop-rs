@@ -56,6 +56,19 @@ impl Phase {
         }
     }
 
+    /// Short English name for display, e.g. in a table cell: "two-phase".
+    pub const fn label(&self) -> &'static str {
+        match self {
+            Self::Liquid => "liquid",
+            Self::Supercritical => "supercritical",
+            Self::SupercriticalGas => "supercritical gas",
+            Self::SupercriticalLiquid => "supercritical liquid",
+            Self::CriticalPoint => "critical point",
+            Self::Gas => "gas",
+            Self::TwoPhase => "two-phase",
+        }
+    }
+
     /// One-line English description (CoolProp's definition).
     pub const fn description(&self) -> &'static str {
         match self {

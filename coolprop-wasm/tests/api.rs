@@ -148,7 +148,7 @@ fn schema_describes_inputs_pairs_properties_and_phases() {
     assert_eq!(cp["category"], "thermodynamic");
     assert_eq!(
         schema["phases"][6],
-        json!({"name": "two_phase",
+        json!({"name": "two_phase", "label": "two-phase",
         "description": "Liquid-vapor mixture inside the saturation dome"})
     );
 }

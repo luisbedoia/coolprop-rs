@@ -128,11 +128,18 @@ describe("diagrams", () => {
   it("lists every plot property and diagram", () => {
     expect(cp.plotProperties().map((p) => p.name)).toEqual(PLOT_PROPERTIES);
     const ids = cp.diagrams().map((d) => d.id);
-    expect(ids).toHaveLength(20);
-    expect(ids).toContain("pressure_enthalpy");
-    expect(ids).toContain("temperature_entropy");
+    expect(ids).toEqual([
+      "pressure_enthalpy",
+      "temperature_entropy",
+      "enthalpy_entropy",
+      "pressure_specific_volume",
+      "temperature_specific_volume",
+      "pressure_temperature",
+    ]);
     const ph = cp.diagrams().find((d) => d.id === "pressure_enthalpy")!;
     expect(ph.y).toEqual({ property: "pressure", scale: "log" });
+    const pt = cp.diagrams().find((d) => d.id === "pressure_temperature")!;
+    expect(pt.y).toEqual({ property: "pressure", scale: "linear" });
     expect(ph.isolines).toContain("temperature");
     expect(ph.isolines).not.toContain("pressure");
   });
@@ -153,6 +160,16 @@ describe("diagrams", () => {
     expect(d.isolines).toHaveLength(4);
     expect(d.isolines[3]).toMatchObject({ kind: "quality", value: 0.5 });
     expect(d.isolines[3].y.every((p) => typeof p === "number")).toBe(true);
+  });
+
+  it("suggests isoline values that are round in the display unit", () => {
+    const d = cp.fluid("Water").diagram({
+      diagram: "enthalpy_entropy",
+      points: 10,
+      isolines: [{ kind: "temperature", count: 7, unit: { scale: 1, offset: -273.15 } }],
+    });
+    const celsius = d.isolines.map((iso) => iso.value - 273.15);
+    [50, 100, 150, 200, 250, 300, 350].forEach((c, i) => expect(celsius[i]).toBeCloseTo(c, 9));
   });
 
   it("marks unsolvable points as null breaks", () => {

@@ -209,11 +209,26 @@ export interface Limits {
   p_max: number;
 }
 
-/** One isoline family: explicit values, or `count` suggested ones (default 5). */
+/**
+ * The unit values are read in, as an affine map from SI:
+ * `shown = si * scale + offset`. °C is `{ scale: 1, offset: -273.15 }`,
+ * kPa `{ scale: 1e-3, offset: 0 }`.
+ */
+export interface DisplayUnit {
+  scale: number;
+  offset: number;
+}
+
+/**
+ * One isoline family: explicit values (SI), or about `count` suggested ones
+ * (default 5), round in `unit` (default SI) and evenly spread across the dome
+ * as the diagram shows it.
+ */
 export interface IsolineSpec {
   kind: InputName;
   values?: number[];
   count?: number;
+  unit?: DisplayUnit;
 }
 
 export interface DiagramRequest {

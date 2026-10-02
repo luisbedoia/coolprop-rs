@@ -2,7 +2,7 @@
 //! external reference for most diagrams, these check physics: each isoline
 //! keeps its property, crosses the dome the right way and stays monotonic.
 
-use coolprop::plot::{Diagram, Limits, PlotProperty, PropertyPlot, Scale};
+use coolprop::plot::{Diagram, DisplayUnit, Limits, PlotProperty, PropertyPlot, Scale};
 use coolprop::{Fluid, Input, InputKind, PropsError, State, Variant};
 
 fn water() -> Fluid {
@@ -25,18 +25,27 @@ fn assert_rel(actual: f64, expected: f64, tol: f64, label: &str) {
 // ── Catalog ─────────────────────────────────────────────────────────────────
 
 #[test]
-fn catalog_has_every_distinct_diagram_conventionally_oriented() {
-    let all = Diagram::all();
-    assert_eq!(all.len(), 20);
-    let has = |x, y| all.iter().any(|d| d.x.property == x && d.y.property == y);
-    use PlotProperty::*;
-    assert!(has(Enthalpy, Pressure), "P–h");
-    assert!(has(Entropy, Temperature), "T–s");
-    assert!(has(Entropy, Enthalpy), "h–s (Mollier)");
-    assert!(has(Temperature, Pressure), "P–T");
-    assert!(has(SpecificVolume, Pressure), "P–v");
-    assert!(!all.iter().any(|d| d.x.property == d.y.property));
-    assert!(!has(Density, SpecificVolume) && !has(SpecificVolume, Density));
+fn catalog_has_the_engineering_diagrams_in_order() {
+    let ids: Vec<String> = Diagram::all().iter().map(Diagram::id).collect();
+    assert_eq!(
+        ids,
+        [
+            "pressure_enthalpy",
+            "temperature_entropy",
+            "enthalpy_entropy",
+            "pressure_specific_volume",
+            "temperature_specific_volume",
+            "pressure_temperature",
+        ]
+    );
+}
+
+#[test]
+fn phase_diagram_has_a_linear_pressure_axis() {
+    let pt = Diagram::from_id("pressure_temperature").unwrap();
+    assert_eq!((pt.x.scale, pt.y.scale), (Scale::Linear, Scale::Linear));
+    let ph = Diagram::from_id("pressure_enthalpy").unwrap();
+    assert_eq!(ph.y.scale, Scale::Log);
 }
 
 #[test]
@@ -289,7 +298,7 @@ fn every_diagram_and_family_is_computable() {
         assert!(plot.range(d.x.property).is_some(), "{d:?} x range");
         assert!(plot.range(d.y.property).is_some(), "{d:?} y range");
         for kind in d.isoline_kinds() {
-            let values = plot.suggested_values(kind, 4);
+            let values = plot.suggested_values(kind, 4, &d, DisplayUnit::SI);
             assert_eq!(values.len(), 4, "{kind:?}");
             for iso in plot.isolines(kind, &values, 40) {
                 let (x, y) = iso.project(d.x.property, d.y.property);
@@ -318,23 +327,141 @@ fn axis_ranges_follow_the_limits() {
     assert!(t_lo <= l.t_min * 1.001 && t_hi >= l.t_max * 0.999);
 }
 
+fn ph() -> Diagram {
+    Diagram::new(PlotProperty::Enthalpy, PlotProperty::Pressure).unwrap()
+}
+
+const CELSIUS: DisplayUnit = DisplayUnit {
+    scale: 1.0,
+    offset: -273.15,
+};
+
+const KPA: DisplayUnit = DisplayUnit {
+    scale: 1e-3,
+    offset: 0.0,
+};
+
+/// Whether `v` is 1, 2, 2.5 or 5 × 10ᵏ times an integer for some k no finer
+/// than a hundredth of `v`: a value people would pick.
+fn is_round(v: f64) -> bool {
+    let k = v.abs().log10().floor() - 2.0;
+    [1.0, 2.0, 2.5, 5.0].iter().any(|m| {
+        (0..=3).any(|e| {
+            let step = m * 10f64.powf(k + e as f64);
+            ((v / step).round() * step - v).abs() <= 1e-9 * v.abs().max(1.0)
+                && (v / step).round().abs() <= 100.0
+        })
+    })
+}
+
 #[test]
-fn suggested_values_span_the_dome() {
+fn suggested_quality_spans_zero_to_one() {
     let w = water();
     let plot = PropertyPlot::new(&w).unwrap();
     assert_eq!(
-        plot.suggested_values(InputKind::Quality, 3),
+        plot.suggested_values(InputKind::Quality, 3, &ph(), CELSIUS),
         [0.25, 0.5, 0.75]
     );
+}
 
-    // Inside the dome's span, not at its edges (the triple and critical
-    // points), evenly log spaced: lo·r, lo·r², …, lo·r⁵ = hi/r.
-    let p = plot.suggested_values(InputKind::Pressure, 5);
-    let (lo, hi) = plot.dome_range(PlotProperty::Pressure).unwrap();
-    let r = (hi / lo).powf(1.0 / 6.0);
-    assert_rel(p[0], lo * r, 1e-9, "first");
-    assert_rel(p[4], hi / r, 1e-9, "last");
-    assert_rel(p[1] / p[0], r, 1e-9, "ratio");
+/// Off the axes they would lie flat on, families are an even grid of round
+/// values in the display unit, inside the dome's span.
+#[test]
+fn suggested_values_are_a_round_grid_in_display_units() {
+    let w = water();
+    let plot = PropertyPlot::new(&w).unwrap();
+    let hs = Diagram::new(PlotProperty::Entropy, PlotProperty::Enthalpy).unwrap();
+
+    let t = plot.suggested_values(InputKind::Temperature, 7, &hs, CELSIUS);
+    let shown: Vec<f64> = t.iter().map(|&v| CELSIUS.show(v)).collect();
+    assert_eq!(shown.len(), 7);
+    let step = shown[1] - shown[0];
+    for pair in shown.windows(2) {
+        assert_rel(pair[1] - pair[0], step, 1e-9, "uniform step");
+    }
+    assert!(shown.iter().all(|&v| is_round(v)), "{shown:?}");
+    let (lo, hi) = plot.dome_range(PlotProperty::Temperature).unwrap();
+    assert!(t[0] > lo && t[6] < hi);
+
+    // Log quantities step 1-2-5 per decade (or coarser/finer sequences).
+    let p = plot.suggested_values(InputKind::Pressure, 6, &hs, KPA);
+    let shown: Vec<f64> = p.iter().map(|&v| KPA.show(v)).collect();
+    assert_eq!(shown.len(), 6);
+    assert!(shown.iter().all(|&v| is_round(v)), "{shown:?}");
+    assert!(shown.windows(2).all(|w| w[1] > w[0]));
+}
+
+/// Isotherms lie flat inside the dome of P–h at the saturation pressure,
+/// which grows about exponentially with temperature: spread evenly in T,
+/// they would bunch up at the top of the log-pressure axis. They are spread
+/// by saturation pressure instead, and still read as round temperatures.
+#[test]
+fn isotherms_on_a_pressure_axis_are_evenly_spaced_on_it() {
+    let w = water();
+    let plot = PropertyPlot::new(&w).unwrap();
+    let t = plot.suggested_values(InputKind::Temperature, 7, &ph(), CELSIUS);
+    assert_eq!(t.len(), 7);
+    let shown: Vec<f64> = t.iter().map(|&v| CELSIUS.show(v)).collect();
+    assert!(shown.iter().all(|&v| is_round(v)), "{shown:?}");
+
+    let ln_p: Vec<f64> = t
+        .iter()
+        .map(|&t| {
+            w.state(Input::Temperature(t), Input::Quality(0.0))
+                .unwrap()
+                .pressure()
+                .ln()
+        })
+        .collect();
+    let gaps: Vec<f64> = ln_p.windows(2).map(|w| w[1] - w[0]).collect();
+    let (min, max) = gaps
+        .iter()
+        .fold((f64::INFINITY, 0f64), |(lo, hi), &g| (lo.min(g), hi.max(g)));
+    assert!(max / min < 1.8, "log-pressure gaps {gaps:?}");
+
+    // Isobars on a temperature axis, likewise.
+    let ts = Diagram::new(PlotProperty::Entropy, PlotProperty::Temperature).unwrap();
+    let p = plot.suggested_values(InputKind::Pressure, 7, &ts, KPA);
+    let shown: Vec<f64> = p.iter().map(|&v| KPA.show(v)).collect();
+    assert!(shown.iter().all(|&v| is_round(v)), "{shown:?}");
+    let t_sat: Vec<f64> = p
+        .iter()
+        .map(|&p| {
+            w.state(Input::Pressure(p), Input::Quality(0.0))
+                .unwrap()
+                .temperature()
+        })
+        .collect();
+    let gaps: Vec<f64> = t_sat.windows(2).map(|w| w[1] - w[0]).collect();
+    let (min, max) = gaps
+        .iter()
+        .fold((f64::INFINITY, 0f64), |(lo, hi), &g| (lo.min(g), hi.max(g)));
+    assert!(max / min < 1.8, "saturation temperature gaps {gaps:?}");
+}
+
+/// On P–T, pressure is linear: isochores spread by the pressure where they
+/// leave the saturation curve, not crowded at its foot as a log grid of
+/// densities would be.
+#[test]
+fn isochores_on_a_linear_pressure_axis_are_evenly_spaced_on_it() {
+    let w = water();
+    let plot = PropertyPlot::new(&w).unwrap();
+    let pt = Diagram::from_id("pressure_temperature").unwrap();
+    let rho = plot.suggested_values(InputKind::Density, 7, &pt, DisplayUnit::SI);
+    assert_eq!(rho.len(), 7);
+    assert!(rho.iter().all(|&v| is_round(v)), "{rho:?}");
+    let p_dew: Vec<f64> = rho
+        .iter()
+        .map(|&d| {
+            let t = w.state(Input::Density(d), Input::Quality(1.0)).unwrap();
+            t.pressure()
+        })
+        .collect();
+    let gaps: Vec<f64> = p_dew.windows(2).map(|w| w[1] - w[0]).collect();
+    let (min, max) = gaps
+        .iter()
+        .fold((f64::INFINITY, 0f64), |(lo, hi), &g| (lo.min(g), hi.max(g)));
+    assert!(max / min < 1.8, "dew pressure gaps {gaps:?}");
 }
 
 #[test]
@@ -397,7 +524,7 @@ fn every_fluid_crosses_the_dome_without_gaps() {
         let fluid = Fluid::new(variant).unwrap();
         let plot = PropertyPlot::new(&fluid).unwrap();
         for kind in [InputKind::Pressure, InputKind::Temperature] {
-            for value in plot.suggested_values(kind, 3) {
+            for value in plot.suggested_values(kind, 3, &ph(), DisplayUnit::SI) {
                 let iso = plot.isoline(kind, value, 90);
                 if let Err(e) = complete_dome_stretch(&iso.states) {
                     panic!("{} {kind:?}={value:.4e}: {e}", variant.name());
@@ -416,7 +543,7 @@ fn blend_isotherm_glides_across_the_dome() {
     };
     let fluid = Fluid::new(variant).unwrap();
     let plot = PropertyPlot::new(&fluid).unwrap();
-    let t = plot.suggested_values(InputKind::Temperature, 3)[1];
+    let t = plot.suggested_values(InputKind::Temperature, 3, &ph(), DisplayUnit::SI)[1];
     let iso = plot.isoline(InputKind::Temperature, t, 90);
     let (first, last) = complete_dome_stretch(&iso.states).unwrap();
     let dome: Vec<State> = solved(&iso.states[first..=last]);

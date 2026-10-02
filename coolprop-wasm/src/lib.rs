@@ -9,7 +9,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use coolprop::plot::{Axis, Diagram, Limits, PlotProperty, PropertyPlot};
+use coolprop::plot::{Axis, Diagram, DisplayUnit, Limits, PlotProperty, PropertyPlot};
 use coolprop::schema::{self, DiagramInfo, InputInfo, PhaseInfo, PlotPropertyInfo, PropertyInfo};
 use coolprop::{CriticalPoint, Fluid, FluidData, Input, InputKind, PropsError, State, Variant};
 use serde::{Deserialize, Serialize};
@@ -39,7 +39,7 @@ pub fn schema() -> String {
     })
 }
 
-/// Request `{fluid, diagram, isolines?: [{kind, values?, count?}], points?,
+/// Request `{fluid, diagram, isolines?: [{kind, values?, count?, unit?}], points?,
 /// limits?}` → `{"ok": DiagramData}`: the axes with their ranges, the
 /// saturation dome and the requested isoline families, all projected onto
 /// the diagram's axes. Unsolvable points are `null` (a break in the curve).
@@ -74,7 +74,12 @@ pub fn diagram(request: &str) -> String {
                 }
                 let values = match (&spec.values, spec.count) {
                     (Some(values), _) => values.clone(),
-                    (None, count) => plot.suggested_values(kind, count.unwrap_or(5).min(50)),
+                    (None, count) => plot.suggested_values(
+                        kind,
+                        count.unwrap_or(5).min(50),
+                        &d,
+                        spec.unit.unwrap_or_default(),
+                    ),
                 };
                 for iso in plot.isolines(kind, &values, req.points) {
                     let (xs, ys) = iso.project(x, y);
@@ -180,6 +185,9 @@ struct IsolineSpec {
     values: Option<Vec<f64>>,
     #[serde(default)]
     count: Option<usize>,
+    /// The unit suggested values are made round in; SI by default.
+    #[serde(default)]
+    unit: Option<DisplayUnit>,
 }
 
 #[derive(Serialize)]

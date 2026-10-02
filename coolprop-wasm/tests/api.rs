@@ -159,13 +159,18 @@ fn schema_describes_the_diagram_catalog() {
     let schema = ok(&v);
     assert_eq!(schema["plot_properties"].as_array().unwrap().len(), 7);
     let diagrams = schema["diagrams"].as_array().unwrap();
-    assert_eq!(diagrams.len(), 20);
+    assert_eq!(diagrams.len(), 6);
     let ph = diagrams
         .iter()
         .find(|d| d["id"] == "pressure_enthalpy")
         .unwrap();
     assert_eq!(ph["x"], json!({"property": "enthalpy", "scale": "linear"}));
     assert_eq!(ph["y"], json!({"property": "pressure", "scale": "log"}));
+    let pt = diagrams
+        .iter()
+        .find(|d| d["id"] == "pressure_temperature")
+        .unwrap();
+    assert_eq!(pt["y"], json!({"property": "pressure", "scale": "linear"}));
     let isolines = ph["isolines"].as_array().unwrap();
     assert!(isolines.contains(&json!("temperature")) && !isolines.contains(&json!("pressure")));
 }
@@ -200,6 +205,27 @@ fn diagram_projects_dome_and_isolines_onto_its_axes() {
     for p in isolines[3]["y"].as_array().unwrap() {
         let p = p.as_f64().expect("iso-quality is fully solved");
         assert!(p > 0.0);
+    }
+}
+
+#[test]
+fn suggested_values_are_round_in_the_requested_unit() {
+    // Isotherms in °C on h–s: an even grid of round values.
+    let v = call(
+        coolprop_wasm::diagram,
+        json!({"fluid": "Water", "diagram": "enthalpy_entropy", "points": 10, "isolines": [
+            {"kind": "temperature", "count": 7, "unit": {"scale": 1.0, "offset": -273.15}},
+        ]}),
+    );
+    let celsius: Vec<f64> = ok(&v)["isolines"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|iso| iso["value"].as_f64().unwrap() - 273.15)
+        .collect();
+    let expected = [50.0, 100.0, 150.0, 200.0, 250.0, 300.0, 350.0];
+    for (c, e) in celsius.iter().zip(expected) {
+        assert!((c - e).abs() < 1e-9, "{celsius:?}");
     }
 }
 

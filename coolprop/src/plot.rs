@@ -100,20 +100,6 @@ impl PlotProperty {
             Self::InternalEnergy => InputKind::InternalEnergy,
         }
     }
-
-    /// Conventional vertical-axis priority: P on top of everything, then T,
-    /// then h (Mollier), … Used to orient the diagram catalog.
-    const fn y_priority(self) -> u8 {
-        match self {
-            Self::Pressure => 0,
-            Self::Temperature => 1,
-            Self::Enthalpy => 2,
-            Self::InternalEnergy => 3,
-            Self::Density => 4,
-            Self::SpecificVolume => 5,
-            Self::Entropy => 6,
-        }
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -170,23 +156,44 @@ impl Diagram {
         Self::all().into_iter().find(|d| d.id() == id)
     }
 
-    /// Every distinct diagram, conventionally oriented (P–h, T–s, h–s, P–T,
-    /// P–v, …): 20 of them.
+    /// The diagrams engineering texts and charts use, in that order: P–h,
+    /// T–s, h–s (Mollier), P–v, T–v and P–T (the phase diagram). Others can
+    /// be built with [`Self::new`] but are left out of the catalog: h–u, for
+    /// one, collapses onto a line (h = u + pv), and density only repeats
+    /// specific volume.
+    ///
+    /// Scales are the defaults except for P–T, whose pressure is linear as
+    /// in phase diagrams: the vapor-pressure curve then rises convex, as
+    /// p ≈ e^(A − B/T), instead of flattening out like ln p.
     pub fn all() -> Vec<Diagram> {
-        let mut out = Vec::new();
-        for (i, &a) in PlotProperty::ALL.iter().enumerate() {
-            for &b in &PlotProperty::ALL[i + 1..] {
-                let (y, x) = if a.y_priority() <= b.y_priority() {
-                    (a, b)
-                } else {
-                    (b, a)
-                };
-                if let Ok(d) = Diagram::new(x, y) {
-                    out.push(d);
-                }
-            }
-        }
-        out
+        use PlotProperty::*;
+        [
+            (Enthalpy, Pressure, None),
+            (Entropy, Temperature, None),
+            (Entropy, Enthalpy, None),
+            (SpecificVolume, Pressure, None),
+            (SpecificVolume, Temperature, None),
+            (Temperature, Pressure, Some(Scale::Linear)),
+        ]
+        .into_iter()
+        .filter_map(|(x, y, y_scale)| {
+            let mut d = Diagram::new(x, y).ok()?;
+            d.y.scale = y_scale.unwrap_or(d.y.scale);
+            Some(d)
+        })
+        .collect()
+    }
+
+    /// Whether `property` is on one of the axes.
+    pub fn has(&self, property: PlotProperty) -> bool {
+        self.axis(property).is_some()
+    }
+
+    /// The axis `property` is on, if any.
+    pub fn axis(&self, property: PlotProperty) -> Option<Axis> {
+        [self.x, self.y]
+            .into_iter()
+            .find(|a| a.property == property)
     }
 
     /// Isoline families worth drawing on this diagram: every input except
@@ -228,6 +235,38 @@ impl Limits {
             p_min: data.p_triple * 1.01,
             p_max: (crit.pressure * 2.25).min(data.p_max * 0.999),
         }
+    }
+}
+
+/// The unit values are read in, as an affine map from SI: `shown = si ·
+/// scale + offset`. Degrees Celsius are `{scale: 1, offset: -273.15}`,
+/// kilopascals `{scale: 1e-3, offset: 0}`. Defaults to SI itself.
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(default))]
+pub struct DisplayUnit {
+    pub scale: f64,
+    pub offset: f64,
+}
+
+impl DisplayUnit {
+    pub const SI: Self = Self {
+        scale: 1.0,
+        offset: 0.0,
+    };
+
+    pub fn show(self, si: f64) -> f64 {
+        si * self.scale + self.offset
+    }
+
+    pub fn si(self, shown: f64) -> f64 {
+        (shown - self.offset) / self.scale
+    }
+}
+
+impl Default for DisplayUnit {
+    fn default() -> Self {
+        Self::SI
     }
 }
 
@@ -340,36 +379,112 @@ impl<'a> PropertyPlot<'a> {
         )
     }
 
-    /// `count` values for an isoline family, evenly spread inside (not at
-    /// the edges of) the dome's span of that property — at the edges sit the
-    /// triple and critical points, where isolines barely exist. Quality
-    /// spans (0, 1); pressure and density are log spaced.
-    pub fn suggested_values(&self, kind: InputKind, count: usize) -> Vec<f64> {
+    /// About `count` values for an isoline family to draw on `diagram`,
+    /// round in `unit` (50 °C, 200 kPa, …) and evenly spread across the
+    /// dome as the diagram shows it. Quality is spread over (0, 1).
+    ///
+    /// Most families are a uniform grid of round values (steps of 1, 2, 2.5
+    /// or 5 × 10ᵏ, or 1-2-5 per decade for log quantities) inside the dome's
+    /// span of the property. Some families are better spread by where they
+    /// meet the dome, which is far from linear in their own value:
+    /// isotherms on a pressure axis and isobars on a temperature axis (flat
+    /// inside the dome) and isochores on a pressure axis. Those are spread
+    /// evenly along that axis, then each value is rounded to a step small
+    /// enough to keep them that way.
+    pub fn suggested_values(
+        &self,
+        kind: InputKind,
+        count: usize,
+        diagram: &Diagram,
+        unit: DisplayUnit,
+    ) -> Vec<f64> {
         if count == 0 {
             return Vec::new();
         }
-        if kind == InputKind::Quality {
-            return (1..=count).map(|i| i as f64 / (count + 1) as f64).collect();
-        }
         let property = match kind {
+            InputKind::Quality => {
+                return (1..=count).map(|i| i as f64 / (count + 1) as f64).collect();
+            }
             InputKind::Pressure => PlotProperty::Pressure,
             InputKind::Temperature => PlotProperty::Temperature,
             InputKind::Density => PlotProperty::Density,
             InputKind::Enthalpy => PlotProperty::Enthalpy,
             InputKind::Entropy => PlotProperty::Entropy,
             InputKind::InternalEnergy => PlotProperty::InternalEnergy,
-            InputKind::Quality => unreachable!(),
         };
-        let Some((lo, hi)) = self.dome_range(property) else {
-            return Vec::new();
+        let logarithmic = property.default_scale() == Scale::Log && unit.offset == 0.0;
+        let shown = match self.spread_along_dome(kind, count, diagram) {
+            Some(values) => {
+                let values: Vec<f64> = values.iter().map(|&v| unit.show(v)).collect();
+                round_each(&values, logarithmic && values.iter().all(|&v| v > 0.0))
+            }
+            None => {
+                let Some((lo, hi)) = self.dome_range(property) else {
+                    return Vec::new();
+                };
+                let (lo, hi) = (unit.show(lo), unit.show(hi));
+                let (lo, hi) = (lo.min(hi), lo.max(hi));
+                round_grid(lo, hi, count, logarithmic && lo > 0.0)
+            }
         };
-        let logarithmic = property.default_scale() == Scale::Log && lo > 0.0;
-        (1..=count)
-            .map(|i| match logarithmic {
-                true => log(lo, hi, i, count + 2),
-                false => lin(lo, hi, i, count + 2),
-            })
-            .collect()
+        shown.into_iter().map(|v| unit.si(v)).collect()
+    }
+
+    /// `count` values (SI) of a family spread evenly, along an axis of
+    /// `diagram`, by where it meets the dome:
+    /// - isotherms by saturation pressure on a pressure axis, and isobars by
+    ///   saturation temperature on a temperature axis (both lie flat inside
+    ///   the dome);
+    /// - isochores by the pressure where they leave the dew line, on a
+    ///   pressure axis.
+    ///
+    /// `None` for other families, or if a saturation state cannot be solved.
+    fn spread_along_dome(
+        &self,
+        kind: InputKind,
+        count: usize,
+        diagram: &Diagram,
+    ) -> Option<Vec<f64>> {
+        let f = self.fluid;
+        let at = |scale: Scale, lo: f64, hi: f64, i: usize| match scale {
+            Scale::Log => log(lo, hi, i, count + 2),
+            Scale::Linear => lin(lo, hi, i, count + 2),
+        };
+        // Midway through the dome: a blend's isotherm glides in pressure
+        // (and its isobar in temperature) from one branch to the other.
+        let mid = 0.5;
+        let p_axis = diagram.axis(PlotProperty::Pressure);
+        match kind {
+            InputKind::Temperature | InputKind::Density if p_axis.is_some() => {
+                let (lo, hi) = self.dome_p_span();
+                let (q, of): (f64, fn(&State) -> f64) = match kind {
+                    InputKind::Temperature => (mid, State::temperature),
+                    _ => (1.0, State::density),
+                };
+                (1..=count)
+                    .map(|i| {
+                        let p = at(p_axis?.scale, lo, hi, i);
+                        f.state(Input::Pressure(p), Input::Quality(q))
+                            .ok()
+                            .map(|s| of(&s))
+                    })
+                    .collect()
+            }
+            InputKind::Pressure => {
+                let t_axis = diagram.axis(PlotProperty::Temperature)?;
+                let (lo, hi) = self.dome_range(PlotProperty::Temperature)?;
+                (1..=count)
+                    .map(|i| {
+                        let t = at(t_axis.scale, lo, hi, i);
+                        let dew = f.state(Input::Temperature(t), Input::Quality(1.0)).ok()?;
+                        let bubble = f.state(Input::Temperature(t), Input::Quality(0.0)).ok()?;
+                        isotherm_in_dome(f, t, mid, dew.pressure(), bubble.pressure())
+                            .map(|s| s.pressure())
+                    })
+                    .collect()
+            }
+            _ => None,
+        }
     }
 
     /// Pressures the dome spans below the critical point.
@@ -595,6 +710,139 @@ fn split_sweep(
     out.extend(sweep(Phase3::Dome(third)));
     out.extend(sweep(Phase3::After(rest)));
     out
+}
+
+/// Share of a span kept clear at each end when placing round values: the
+/// dome's ends are the triple and critical points, where isolines barely
+/// exist.
+const EDGE: f64 = 0.04;
+
+/// `count` consecutive points of the coarsest round grid that fits them in
+/// `[lo, hi]`, centered in it. Linear grids step by 1, 2, 2.5 or 5 × 10ᵏ;
+/// log grids take 1-2-5 per decade, or coarser or finer sequences. Falls
+/// back to rounding evenly spread values when no grid fits.
+fn round_grid(lo: f64, hi: f64, count: usize, logarithmic: bool) -> Vec<f64> {
+    let grid = if logarithmic {
+        let (a, b) = (lo.ln(), hi.ln());
+        let margin = (b - a) * EDGE;
+        log_grid((a + margin).exp(), (b - margin).exp(), count)
+    } else {
+        let margin = (hi - lo) * EDGE;
+        lin_grid(lo + margin, hi - margin, count)
+    };
+    grid.unwrap_or_else(|| {
+        let spread: Vec<f64> = (1..=count)
+            .map(|i| match logarithmic {
+                true => log(lo, hi, i, count + 2),
+                false => lin(lo, hi, i, count + 2),
+            })
+            .collect();
+        round_each(&spread, logarithmic)
+    })
+}
+
+fn lin_grid(lo: f64, hi: f64, count: usize) -> Option<Vec<f64>> {
+    if hi <= lo || !lo.is_finite() || !hi.is_finite() {
+        return None;
+    }
+    let top = (hi - lo).log10().ceil() as i32;
+    for k in (top - 12..=top).rev() {
+        for m in [5.0, 2.5, 2.0, 1.0] {
+            let step = m * 10f64.powi(k);
+            let (first, last) = ((lo / step).ceil(), (hi / step).floor());
+            let available = last - first + 1.0;
+            if available >= count as f64 {
+                let start = first + ((available - count as f64) / 2.0).floor();
+                return Some(
+                    (0..count)
+                        .map(|i| (start + i as f64) * step)
+                        .map(clean)
+                        .collect(),
+                );
+            }
+        }
+    }
+    None
+}
+
+fn log_grid(lo: f64, hi: f64, count: usize) -> Option<Vec<f64>> {
+    if !(hi > lo && lo > 0.0) || !hi.is_finite() {
+        return None;
+    }
+    // (mantissas, decade stride), coarsest first.
+    const GRIDS: [(&[f64], i32); 8] = [
+        (&[1.0], 4),
+        (&[1.0], 3),
+        (&[1.0], 2),
+        (&[1.0], 1),
+        (&[1.0, 3.0], 1),
+        (&[1.0, 2.0, 5.0], 1),
+        (&[1.0, 2.0, 3.0, 5.0, 7.0], 1),
+        (&[1.0, 1.5, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0], 1),
+    ];
+    let (d_lo, d_hi) = (lo.log10().floor() as i32, hi.log10().ceil() as i32);
+    for (mantissas, stride) in GRIDS {
+        let points: Vec<f64> = (d_lo..=d_hi)
+            .filter(|d| d.rem_euclid(stride) == 0)
+            .flat_map(|d| mantissas.iter().map(move |m| clean(m * 10f64.powi(d))))
+            .filter(|v| (lo..=hi).contains(v))
+            .collect();
+        if points.len() >= count {
+            let start = (points.len() - count) / 2;
+            return Some(points[start..start + count].to_vec());
+        }
+    }
+    None
+}
+
+/// Rounds each value to a round step (1, 2 or 5 × 10ᵏ) no larger than half
+/// the gap to its nearest neighbor — measured on a log scale if
+/// `logarithmic` — so the values stay distinct and keep their spacing.
+fn round_each(values: &[f64], logarithmic: bool) -> Vec<f64> {
+    let position = |v: f64| if logarithmic { v.ln() } else { v };
+    (0..values.len())
+        .map(|i| {
+            let v = values[i];
+            let gap = [i.checked_sub(1), Some(i + 1)]
+                .into_iter()
+                .flatten()
+                .filter_map(|j| values.get(j))
+                .map(|&w| (position(w) - position(v)).abs())
+                .fold(f64::INFINITY, f64::min);
+            // Alone: two significant digits.
+            let tolerance = match (gap.is_finite(), logarithmic) {
+                (false, _) => v.abs() / 10.0,
+                (true, false) => gap / 2.0,
+                (true, true) => v * (1.0 - (-gap / 2.0).exp()),
+            };
+            if tolerance <= 0.0 || !tolerance.is_finite() || !v.is_finite() {
+                return v;
+            }
+            let step = round_step_below(tolerance);
+            clean((v / step).round() * step)
+        })
+        .collect()
+}
+
+/// The largest 1, 2 or 5 × 10ᵏ not above `x` (> 0).
+fn round_step_below(x: f64) -> f64 {
+    let k = x.log10().floor();
+    let base = 10f64.powf(k);
+    [5.0, 2.0, 1.0]
+        .into_iter()
+        .map(|m| m * base)
+        .find(|&s| s <= x)
+        .unwrap_or(base)
+}
+
+/// Drops float noise from a product like 3 × 0.1, so values read as typed.
+fn clean(v: f64) -> f64 {
+    if v == 0.0 || !v.is_finite() {
+        return v;
+    }
+    let digits = 12 - v.abs().log10().floor() as i32;
+    let scale = 10f64.powi(digits.clamp(-300, 300));
+    (v * scale).round() / scale
 }
 
 fn sweep_lin(

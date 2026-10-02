@@ -4,4 +4,6 @@
 .DS_Store
 node_modules/
 wasm-pkg/dist/
+wasm-pkg/lib/
+wasm-pkg/.vitest/
 wasm-pkg/test/__screenshots__/

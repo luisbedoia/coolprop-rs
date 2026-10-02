@@ -39,6 +39,10 @@ jobs:
           registry-url: "https://npm.pkg.github.com"
           scope: "@luisbedoia"
 
+      - name: Install package dependencies
+        working-directory: wasm-pkg
+        run: npm ci
+
       - name: Set package version
         working-directory: wasm-pkg
         run: npm version "${{ steps.version.outputs.version }}" --no-git-tag-version --allow-same-version

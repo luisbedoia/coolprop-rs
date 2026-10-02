@@ -1,7 +1,7 @@
 {
   "name": "@luisbedoia/coolprop-rs-wasm",
   "version": "0.1.0",
-  "description": "Browser/Wasm bridge to coolprop-rs — a Rust thermophysical property library powered by CoolProp.",
+  "description": "Browser/Wasm bridge to coolprop-rs \u2014 a Rust thermophysical property library powered by CoolProp.",
   "license": "MIT",
   "author": "Luis Arias <ariasb.luis@gmail.com>",
   "repository": {
@@ -22,27 +22,25 @@
     "registry": "https://npm.pkg.github.com"
   },
   "type": "module",
-  "main": "./src/index.ts",
-  "types": "./src/index.ts",
+  "main": "./lib/index.js",
+  "types": "./lib/index.d.ts",
   "exports": {
     ".": {
-      "types": "./src/index.ts",
-      "import": "./src/index.ts"
-    },
-    "./types": {
-      "types": "./src/types.ts",
-      "import": "./src/types.ts"
+      "types": "./lib/index.d.ts",
+      "import": "./lib/index.js"
     }
   },
   "files": [
-    "src",
+    "lib",
     "dist",
     "README.md"
   ],
   "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit"
+    "prepack": "npm run build"
   },
   "devDependencies": {
     "@vitest/browser-playwright": "5.0.3",

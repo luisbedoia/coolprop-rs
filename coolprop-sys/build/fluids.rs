@@ -37,7 +37,12 @@ pub(crate) fn resolve_fluids() -> Vec<String> {
             .map(str::trim)
             .filter(|s| !s.is_empty())
             .map(str::to_owned)
-            .collect(),
+            .fold(Vec::new(), |mut acc, stem| {
+                if !acc.contains(&stem) {
+                    acc.push(stem);
+                }
+                acc
+            }),
         _ => CURATED_FLUIDS.iter().map(|s| s.to_string()).collect(),
     }
 }
@@ -50,10 +55,11 @@ pub(crate) struct FluidFields {
     pub(crate) name: String,
     pub(crate) cas: String,
     pub(crate) formula: String,
+    pub(crate) aliases: Vec<String>,
     pub(crate) molar_mass: f64,
-    pub(crate) t_critical: f64,
-    pub(crate) p_critical: f64,
-    pub(crate) t_min: f64,
+    pub(crate) acentric: f64,
+    pub(crate) t_triple: f64,
+    pub(crate) p_triple: f64,
     pub(crate) t_max: f64,
     pub(crate) p_max: f64,
 }
@@ -85,32 +91,47 @@ pub(crate) fn read_fluid(fluids_dir: &Path, file_stem: &str) -> FluidFields {
         .unwrap_or("")
         .to_string();
 
+    let aliases = info
+        .get("ALIASES")
+        .and_then(|x| x.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|a| a.as_str())
+                .filter(|a| *a != name)
+                .map(str::to_owned)
+                .collect()
+        })
+        .unwrap_or_default();
+
     let eos0 = json
         .get("EOS")
         .and_then(|e| e.get(0))
         .unwrap_or_else(|| panic!("fluid '{file_stem}': missing EOS[0]"));
     let ctx_eos = format!("fluid '{file_stem}' (EOS[0])");
     let molar_mass = extract_f64(eos0, "molar_mass", &ctx_eos);
-    let t_min = extract_f64(eos0, "Ttriple", &ctx_eos);
+    let acentric = extract_f64(eos0, "acentric", &ctx_eos);
     let t_max = extract_f64(eos0, "T_max", &ctx_eos);
     let p_max = extract_f64(eos0, "p_max", &ctx_eos);
 
-    let crit = json
+    // CoolProp takes both its lower temperature limit (Tmin) and the triple
+    // point from here, not from `EOS[0].Ttriple` (see FluidLibrary.h).
+    let sat_min = eos0
         .get("STATES")
-        .and_then(|s| s.get("critical"))
-        .unwrap_or_else(|| panic!("fluid '{file_stem}': missing STATES.critical"));
-    let ctx_crit = format!("fluid '{file_stem}' (STATES.critical)");
-    let t_critical = extract_f64(crit, "T", &ctx_crit);
-    let p_critical = extract_f64(crit, "p", &ctx_crit);
+        .and_then(|s| s.get("sat_min_liquid"))
+        .unwrap_or_else(|| panic!("fluid '{file_stem}': missing EOS[0].STATES.sat_min_liquid"));
+    let ctx_sat = format!("fluid '{file_stem}' (EOS[0].STATES.sat_min_liquid)");
+    let t_triple = extract_f64(sat_min, "T", &ctx_sat);
+    let p_triple = extract_f64(sat_min, "p", &ctx_sat);
 
     FluidFields {
         name,
         cas,
         formula,
+        aliases,
         molar_mass,
-        t_critical,
-        p_critical,
-        t_min,
+        acentric,
+        t_triple,
+        p_triple,
         t_max,
         p_max,
     }

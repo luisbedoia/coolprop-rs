@@ -114,26 +114,24 @@ fn catalog_matches_variants() {
     }
 }
 
-/// Molar mass is a passthrough of the JSON, so it must match exactly. The
-/// critical point is recomputed by each EOS and differs from the published
-/// (often rounded) value by up to ~1.2e-3 (CarbonMonoxide pcrit: 3.4982 MPa
-/// from the EOS vs 3.494 MPa in `STATES.critical`).
+/// Every numeric `FluidData` field must equal what CoolProp reports at runtime.
 #[test]
 fn every_curated_fluid_opens_with_matching_metadata() {
+    const EXACT: f64 = 1e-12;
     let _g = lock();
     for data in FLUIDS {
         let state = State::open("HEOS", data.name)
             .unwrap_or_else(|e| panic!("{} does not open: {e}", data.name));
-        for (param, runtime, published, tol) in [
-            (
-                "molar_mass",
-                state.keyed_output("molar_mass"),
-                data.molar_mass,
-                1e-12,
-            ),
-            ("Tcrit", state.keyed_output("Tcrit"), data.t_critical, 2e-3),
-            ("pcrit", state.keyed_output("pcrit"), data.p_critical, 2e-3),
+        for (param, published, tol) in [
+            ("molar_mass", data.molar_mass, EXACT),
+            ("acentric", data.acentric, EXACT),
+            ("Ttriple", data.t_triple, EXACT),
+            ("Tmin", data.t_triple, EXACT),
+            ("ptriple", data.p_triple, EXACT),
+            ("Tmax", data.t_max, EXACT),
+            ("pmax", data.p_max, EXACT),
         ] {
+            let runtime = state.keyed_output(param);
             let diff = rel_diff(runtime, published);
             assert!(
                 diff < tol,
@@ -142,6 +140,25 @@ fn every_curated_fluid_opens_with_matching_metadata() {
             );
         }
     }
+}
+
+#[test]
+fn lookup_by_name_and_alias() {
+    for data in FLUIDS {
+        let v = Variant::from_name(data.name).expect("canonical name resolves");
+        for alias in data.aliases {
+            assert_eq!(
+                Variant::from_name(alias),
+                Some(v),
+                "{alias} -> {}",
+                data.name
+            );
+        }
+    }
+    if Variant::from_name("Water").is_some() {
+        assert_eq!(Variant::from_name("H2O"), Variant::from_name("Water"));
+    }
+    assert_eq!(Variant::from_name("not-a-fluid"), None);
 }
 
 #[test]

@@ -46,9 +46,17 @@ jobs:
           key: cpm-${{ hashFiles('coolprop-sys/CoolProp/cmake/dependencies.cmake') }}
       - run: docker compose run --rm test-wasm
 
-  # Browser suite for the npm package (headless Chromium via Playwright).
+  # Browser suite for the npm package (headless Chromium via Playwright),
+  # against freshly built wasm artifacts.
   npm:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+      - uses: actions/cache@v6
+        with:
+          path: coolprop-sys/CoolProp/.cpm_cache
+          key: cpm-${{ hashFiles('coolprop-sys/CoolProp/cmake/dependencies.cmake') }}
+      - run: docker compose run --rm build-npm
       - run: docker compose run --rm test-npm

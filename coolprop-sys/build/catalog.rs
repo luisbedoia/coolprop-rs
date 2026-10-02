@@ -32,7 +32,26 @@ fn read_curated_fluids(manifest_dir: &Path, fluids: &[String]) -> Vec<(String, F
         }
         entries.push((variant, fields));
     }
+    check_unique_lookup_names(&entries);
     entries
+}
+
+/// `Variant::from_name` matches canonical names and aliases; each must point
+/// to exactly one curated fluid.
+fn check_unique_lookup_names(entries: &[(String, FluidFields)]) {
+    let mut owner: HashMap<&str, &str> = HashMap::new();
+    for (_, f) in entries {
+        for key in std::iter::once(&f.name).chain(&f.aliases) {
+            if let Some(prev) = owner.insert(key, &f.name)
+                && prev != f.name
+            {
+                panic!(
+                    "name/alias '{key}' is claimed by both '{prev}' and '{}'",
+                    f.name
+                );
+            }
+        }
+    }
 }
 
 /// CoolProp name → Rust identifier: drop parens, split on `-`, capitalize each
@@ -52,18 +71,19 @@ fn to_variant(name: &str) -> String {
 
 fn render_catalog_tokens(entries: &[(String, FluidFields)]) -> proc_macro2::TokenStream {
     let fluid_inits = entries.iter().map(|(_, f)| {
-        let (name, cas, formula) = (&f.name, &f.cas, &f.formula);
-        let (molar_mass, t_critical, p_critical) = (f.molar_mass, f.t_critical, f.p_critical);
-        let (t_min, t_max, p_max) = (f.t_min, f.t_max, f.p_max);
+        let (name, cas, formula, aliases) = (&f.name, &f.cas, &f.formula, &f.aliases);
+        let (molar_mass, acentric) = (f.molar_mass, f.acentric);
+        let (t_triple, p_triple, t_max, p_max) = (f.t_triple, f.p_triple, f.t_max, f.p_max);
         quote! {
             FluidData {
                 name: #name,
                 cas: #cas,
                 formula: #formula,
+                aliases: &[ #(#aliases),* ],
                 molar_mass: #molar_mass,
-                t_critical: #t_critical,
-                p_critical: #p_critical,
-                t_min: #t_min,
+                acentric: #acentric,
+                t_triple: #t_triple,
+                p_triple: #p_triple,
                 t_max: #t_max,
                 p_max: #p_max,
             }

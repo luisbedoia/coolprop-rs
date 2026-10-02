@@ -8,6 +8,7 @@
 
 use crate::input::{InputKind, PAIRS};
 use crate::phase::Phase;
+use crate::plot::{Axis, Diagram, PlotProperty};
 
 /// An input that can fix a state.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -227,4 +228,67 @@ pub fn phases() -> impl ExactSizeIterator<Item = PhaseInfo> {
         name,
         description: name.description(),
     })
+}
+
+/// A property that can be plotted on a diagram axis.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+pub struct PlotPropertyInfo {
+    pub name: PlotProperty,
+    pub symbol: &'static str,
+    pub unit: &'static str,
+    pub description: &'static str,
+}
+
+/// Every plottable property, in [`PlotProperty::ALL`] order.
+pub fn plot_properties() -> &'static [PlotPropertyInfo] {
+    use PlotProperty::*;
+    const fn info(
+        name: PlotProperty,
+        symbol: &'static str,
+        unit: &'static str,
+        description: &'static str,
+    ) -> PlotPropertyInfo {
+        PlotPropertyInfo {
+            name,
+            symbol,
+            unit,
+            description,
+        }
+    }
+    const PLOT_PROPERTIES: [PlotPropertyInfo; 7] = [
+        info(Pressure, "p", "Pa", "Pressure"),
+        info(Temperature, "T", "K", "Temperature"),
+        info(Density, "ρ", "kg/m³", "Mass density"),
+        info(SpecificVolume, "v", "m³/kg", "Specific volume"),
+        info(Enthalpy, "h", "J/kg", "Specific enthalpy"),
+        info(Entropy, "s", "J/(kg·K)", "Specific entropy"),
+        info(InternalEnergy, "u", "J/kg", "Specific internal energy"),
+    ];
+    &PLOT_PROPERTIES
+}
+
+/// A diagram of the catalog.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+pub struct DiagramInfo {
+    /// `"<y>_<x>"`, e.g. `"pressure_enthalpy"`.
+    pub id: String,
+    pub x: Axis,
+    pub y: Axis,
+    /// Isoline families worth drawing on it.
+    pub isolines: Vec<InputKind>,
+}
+
+/// Every diagram of [`Diagram::all`].
+pub fn diagrams() -> Vec<DiagramInfo> {
+    Diagram::all()
+        .into_iter()
+        .map(|d| DiagramInfo {
+            id: d.id(),
+            x: d.x,
+            y: d.y,
+            isolines: d.isoline_kinds(),
+        })
+        .collect()
 }

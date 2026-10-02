@@ -30,6 +30,8 @@ describe("loadCoolPropWorker", () => {
     expect(cp.pairs()).toEqual(sync.pairs());
     expect(cp.properties()).toEqual(sync.properties());
     expect(cp.phases()).toEqual(sync.phases());
+    expect(cp.plotProperties()).toEqual(sync.plotProperties());
+    expect(cp.diagrams()).toEqual(sync.diagrams());
   });
 
   it("solves the same states as the sync API", async () => {
@@ -38,6 +40,16 @@ describe("loadCoolPropWorker", () => {
     expect(water.critical).toEqual(sync.fluid("Water").critical);
     const inputs = { pressure: 101325, temperature: 298.15 } as const;
     expect(await water.state(inputs)).toEqual(sync.fluid("Water").state(inputs));
+  });
+
+  it("builds the same diagrams as the sync API", async () => {
+    const request = {
+      diagram: "temperature_entropy",
+      points: 30,
+      isolines: [{ kind: "pressure" as const, count: 2 }],
+    };
+    const water = await cp.fluid("Water");
+    expect(await water.diagram(request)).toEqual(sync.fluid("Water").diagram(request));
   });
 
   it("rejects with classified CoolPropErrors", async () => {

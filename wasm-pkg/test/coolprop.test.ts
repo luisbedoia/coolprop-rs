@@ -19,6 +19,7 @@ import {
   INPUT_PAIRS,
   type InputName,
   type Phase,
+  type PlotProperty,
   type PropertyName,
 } from "../src/types.js";
 
@@ -62,12 +63,22 @@ const PROPERTY_NAMES = [
   "compressibility",
   "speed_of_sound",
 ] as const satisfies readonly PropertyName[];
+const PLOT_PROPERTIES = [
+  "pressure",
+  "temperature",
+  "density",
+  "specific_volume",
+  "enthalpy",
+  "entropy",
+  "internal_energy",
+] as const satisfies readonly PlotProperty[];
 type Exhaustive<All, Listed> = [Exclude<All, Listed>] extends [never] ? true : never;
 const exhaustive: [
   Exhaustive<InputName, (typeof INPUT_NAMES)[number]>,
   Exhaustive<Phase, (typeof PHASES)[number]>,
   Exhaustive<PropertyName, (typeof PROPERTY_NAMES)[number]>,
-] = [true, true, true];
+  Exhaustive<PlotProperty, (typeof PLOT_PROPERTIES)[number]>,
+] = [true, true, true, true];
 void exhaustive;
 
 let cp: CoolProp;
@@ -110,6 +121,59 @@ describe("schema", () => {
     const s = cp.fluid("Water").state({ pressure: 101325, temperature: 298.15 });
     const keys = Object.keys(s).filter((k) => k !== "phase");
     expect(keys.sort()).toEqual([...PROPERTY_NAMES].sort());
+  });
+});
+
+describe("diagrams", () => {
+  it("lists every plot property and diagram", () => {
+    expect(cp.plotProperties().map((p) => p.name)).toEqual(PLOT_PROPERTIES);
+    const ids = cp.diagrams().map((d) => d.id);
+    expect(ids).toHaveLength(20);
+    expect(ids).toContain("pressure_enthalpy");
+    expect(ids).toContain("temperature_entropy");
+    const ph = cp.diagrams().find((d) => d.id === "pressure_enthalpy")!;
+    expect(ph.y).toEqual({ property: "pressure", scale: "log" });
+    expect(ph.isolines).toContain("temperature");
+    expect(ph.isolines).not.toContain("pressure");
+  });
+
+  it("builds a diagram projected onto its axes", () => {
+    const d = cp.fluid("Water").diagram({
+      diagram: "pressure_enthalpy",
+      points: 40,
+      isolines: [
+        { kind: "temperature", count: 3 },
+        { kind: "quality", values: [0.5] },
+      ],
+    });
+    expect(d.x.property).toBe("enthalpy");
+    expect(d.y.scale).toBe("log");
+    expect(d.y.range![0]).toBeLessThan(d.y.range![1]);
+    expect(d.dome.liquid.x).toHaveLength(d.dome.liquid.y.length);
+    expect(d.isolines).toHaveLength(4);
+    expect(d.isolines[3]).toMatchObject({ kind: "quality", value: 0.5 });
+    expect(d.isolines[3].y.every((p) => typeof p === "number")).toBe(true);
+  });
+
+  it("marks unsolvable points as null breaks", () => {
+    // This isentrope leaves the domain partway.
+    const [iso] = cp.fluid("Water").diagram({
+      diagram: "pressure_enthalpy",
+      points: 40,
+      isolines: [{ kind: "entropy", values: [12668] }],
+    }).isolines;
+    expect(iso.x.some((v) => v === null)).toBe(true);
+    expect(iso.x.some((v) => typeof v === "number")).toBe(true);
+  });
+
+  it("rejects unknown diagrams and axis isolines", () => {
+    const water = cp.fluid("Water");
+    expect(() => water.diagram({ diagram: "nope" })).toThrowError(
+      expect.objectContaining({ kind: "invalid_input" }),
+    );
+    expect(() =>
+      water.diagram({ diagram: "pressure_enthalpy", isolines: [{ kind: "pressure" }] }),
+    ).toThrowError(expect.objectContaining({ kind: "invalid_input" }));
   });
 });
 

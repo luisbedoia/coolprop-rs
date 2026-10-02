@@ -13,7 +13,14 @@ import type {
   StatesResult,
   WireError,
 } from "./protocol.js";
-import type { CriticalPoint, FluidData, State, StateInputs } from "./types.js";
+import type {
+  CriticalPoint,
+  DiagramData,
+  DiagramRequest,
+  FluidData,
+  State,
+  StateInputs,
+} from "./types.js";
 
 /** A curated fluid whose states are solved in the worker. */
 export interface WorkerFluid {
@@ -26,6 +33,8 @@ export interface WorkerFluid {
   state(inputs: StateInputs): Promise<State>;
   /** Solves many states; each entry is a `State` or that point's `CoolPropError`. */
   states(inputs: readonly StateInputs[]): Promise<(State | CoolPropError)[]>;
+  /** A diagram with its saturation dome and the requested isolines. Rejects with `CoolPropError`. */
+  diagram(request: DiagramRequest): Promise<DiagramData>;
 }
 
 /**
@@ -103,6 +112,8 @@ export async function loadCoolPropWorker(options: WorkerOptions = {}): Promise<C
     pairs: () => init.pairs,
     properties: () => init.properties,
     phases: () => init.phases,
+    plotProperties: () => init.plot_properties,
+    diagrams: () => init.diagrams,
     async fluid(name: string): Promise<WorkerFluid> {
       const f = await request<FluidResult>({ method: "fluid", name });
       return {
@@ -110,6 +121,7 @@ export async function loadCoolPropWorker(options: WorkerOptions = {}): Promise<C
         data: f.data,
         critical: f.critical,
         state: (inputs) => request<State>({ method: "state", fluid: f.name, inputs }),
+        diagram: (spec) => request<DiagramData>({ method: "diagram", fluid: f.name, request: spec }),
         states: async (inputs) =>
           (await request<StatesResult>({ method: "states", fluid: f.name, inputs })).map((item) =>
             "ok" in item ? item.ok : new CoolPropError(item.error),

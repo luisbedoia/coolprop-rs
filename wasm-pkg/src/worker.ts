@@ -40,6 +40,8 @@ async function handle(req: Request): Promise<unknown> {
         pairs: cp.pairs().map(([a, b]) => [a, b]),
         properties: [...cp.properties()],
         phases: [...cp.phases()],
+        plot_properties: [...cp.plotProperties()],
+        diagrams: [...cp.diagrams()],
       } satisfies InitResult;
     case "fluid": {
       const f = open(req.name);
@@ -47,6 +49,8 @@ async function handle(req: Request): Promise<unknown> {
     }
     case "state":
       return open(req.fluid).state(req.inputs);
+    case "diagram":
+      return open(req.fluid).diagram(req.request);
     case "states":
       return open(req.fluid)
         .states(req.inputs)

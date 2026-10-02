@@ -13,6 +13,9 @@
 
 import type {
   CriticalPoint,
+  DiagramData,
+  DiagramInfo,
+  DiagramRequest,
   Envelope,
   ErrorBody,
   ErrorKind,
@@ -20,6 +23,7 @@ import type {
   InputInfo,
   InputName,
   PhaseInfo,
+  PlotPropertyInfo,
   PropertyInfo,
   Schema,
   State,
@@ -44,6 +48,8 @@ export interface Fluid {
    * each entry is either a `State` or the `CoolPropError` for that point.
    */
   states(inputs: readonly StateInputs[]): (State | CoolPropError)[];
+  /** A diagram with its saturation dome and the requested isolines. Throws {@link CoolPropError}. */
+  diagram(request: DiagramRequest): DiagramData;
 }
 
 /** What both the synchronous and the worker APIs know without solving. */
@@ -60,6 +66,10 @@ export interface CoolPropInfo {
   properties(): readonly PropertyInfo[];
   /** Phases a `State` can be in. */
   phases(): readonly PhaseInfo[];
+  /** Properties that can go on a diagram axis, with symbol and unit. */
+  plotProperties(): readonly PlotPropertyInfo[];
+  /** Every diagram: its axes and the isoline families it draws. */
+  diagrams(): readonly DiagramInfo[];
 }
 
 export interface CoolProp extends CoolPropInfo {
@@ -86,6 +96,7 @@ export interface CoolPropModule {
   _coolprop_fluid(request: number): number;
   _coolprop_state(request: number): number;
   _coolprop_states(request: number): number;
+  _coolprop_diagram(request: number): number;
   _coolprop_free_string(ptr: number): void;
   UTF8ToString(ptr: number): string;
   stringToUTF8(str: string, ptr: number, maxBytes: number): void;
@@ -147,6 +158,8 @@ export async function loadCoolProp(options: LoadOptions = {}): Promise<CoolProp>
     pairs: () => getSchema().pairs,
     properties: () => getSchema().properties,
     phases: () => getSchema().phases,
+    plotProperties: () => getSchema().plot_properties,
+    diagrams: () => getSchema().diagrams,
     fluid(name: string): Fluid {
       const info = unwrap<{ data: FluidData; critical: CriticalPoint }>(
         call(m._coolprop_fluid, { fluid: name }),
@@ -157,6 +170,8 @@ export async function loadCoolProp(options: LoadOptions = {}): Promise<CoolProp>
         data: info.data,
         critical: info.critical,
         state: (inputs) => unwrap<State>(call(m._coolprop_state, { fluid: canonical, inputs })),
+        diagram: (request) =>
+          unwrap<DiagramData>(call(m._coolprop_diagram, { ...request, fluid: canonical })),
         states: (inputs) =>
           unwrap<Envelope<State>[]>(call(m._coolprop_states, { fluid: canonical, inputs })).map(
             (item) => ("ok" in item ? item.ok : new CoolPropError(item.error)),

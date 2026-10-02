@@ -254,8 +254,16 @@ fn out_of_range_quality_gives_an_empty_isoline() {
 fn projection_maps_unsolved_points_to_nan() {
     let w = water();
     let plot = PropertyPlot::new(&w).unwrap();
-    // Most of this isentrope lies outside the domain at low pressure.
-    let iso = plot.isoline(InputKind::Entropy, 9500.0, 40);
+    // An impossible value (water is not a fluid at 200 K) has no curve.
+    assert!(
+        plot.isoline(InputKind::Temperature, 200.0, 40)
+            .states
+            .is_empty()
+    );
+    // This isentrope leaves the domain partway: it has both kinds of point.
+    let iso = plot.isoline(InputKind::Entropy, 12_668.0, 40);
+    assert!(iso.states.iter().any(Option::is_none));
+    assert!(iso.states.iter().any(Option::is_some));
     let (x, y) = iso.project(PlotProperty::Enthalpy, PlotProperty::Pressure);
     assert_eq!(x.len(), iso.states.len());
     for (i, s) in iso.states.iter().enumerate() {

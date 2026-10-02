@@ -1,5 +1,6 @@
 //! The `schema` catalogs must describe the API exactly as it behaves.
 
+use coolprop::plot::{Diagram, PlotProperty};
 use coolprop::schema::{self, PropertyCategory};
 use coolprop::{Fluid, Input, InputKind, Phase, PropsError, Variant};
 
@@ -117,4 +118,26 @@ fn phases_cover_every_phase() {
     let names: Vec<Phase> = schema::phases().map(|p| p.name).collect();
     assert_eq!(names, Phase::ALL);
     assert!(schema::phases().all(|p| !p.description.is_empty()));
+}
+
+#[test]
+fn plot_properties_cover_every_axis_property_in_order() {
+    let names: Vec<PlotProperty> = schema::plot_properties().iter().map(|p| p.name).collect();
+    assert_eq!(names, PlotProperty::ALL);
+}
+
+#[test]
+fn diagram_ids_are_unique_and_resolve_back() {
+    let diagrams = schema::diagrams();
+    assert_eq!(diagrams.len(), Diagram::all().len());
+    let mut ids: Vec<&str> = diagrams.iter().map(|d| d.id.as_str()).collect();
+    ids.sort();
+    ids.dedup();
+    assert_eq!(ids.len(), diagrams.len(), "ids are unique");
+    for info in &diagrams {
+        let d = Diagram::from_id(&info.id).expect("id resolves");
+        assert_eq!((d.x, d.y), (info.x, info.y));
+        assert_eq!(d.isoline_kinds(), info.isolines);
+    }
+    assert!(ids.contains(&"pressure_enthalpy") && ids.contains(&"temperature_entropy"));
 }

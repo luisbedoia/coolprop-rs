@@ -64,6 +64,14 @@ mod exports {
     }
 
     /// # Safety
+    /// `input` must be null or a NUL-terminated UTF-8 string.
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn coolprop_diagram(input: *const c_char) -> *mut c_char {
+        // SAFETY: forwarded caller contract.
+        unsafe { with_request(input, coolprop_wasm::diagram) }
+    }
+
+    /// # Safety
     /// `ptr` must be null or a string returned by one of the functions above,
     /// not yet freed.
     #[unsafe(no_mangle)]
@@ -75,13 +83,14 @@ mod exports {
     }
 
     /// Referenced from `main` so the linker keeps the exports.
-    pub(crate) const ALL: [*const (); 7] = [
+    pub(crate) const ALL: [*const (); 8] = [
         coolprop_version as *const (),
         coolprop_catalog as *const (),
         coolprop_schema as *const (),
         coolprop_fluid as *const (),
         coolprop_state as *const (),
         coolprop_states as *const (),
+        coolprop_diagram as *const (),
         coolprop_free_string as *const (),
     ];
 }

@@ -160,6 +160,97 @@ export interface Schema {
   pairs: [InputName, InputName][];
   properties: PropertyInfo[];
   phases: PhaseInfo[];
+  plot_properties: PlotPropertyInfo[];
+  diagrams: DiagramInfo[];
+}
+
+// ── Diagrams ────────────────────────────────────────────────────────────────
+
+/** A property that can be plotted on a diagram axis. */
+export type PlotProperty =
+  | "pressure"
+  | "temperature"
+  | "density"
+  | "specific_volume"
+  | "enthalpy"
+  | "entropy"
+  | "internal_energy";
+
+export type Scale = "linear" | "log";
+
+export interface PlotPropertyInfo {
+  name: PlotProperty;
+  symbol: string;
+  /** SI; "" means dimensionless. */
+  unit: string;
+  description: string;
+}
+
+export interface Axis {
+  property: PlotProperty;
+  scale: Scale;
+}
+
+/** A diagram of the catalog, e.g. pressure–enthalpy. */
+export interface DiagramInfo {
+  /** `"<y>_<x>"`, e.g. "pressure_enthalpy". */
+  id: string;
+  x: Axis;
+  y: Axis;
+  /** Isoline families worth drawing on it. */
+  isolines: InputName[];
+}
+
+/** Temperature/pressure domain of a diagram (SI). */
+export interface Limits {
+  t_min: number;
+  t_max: number;
+  p_min: number;
+  p_max: number;
+}
+
+/** One isoline family: explicit values, or `count` suggested ones (default 5). */
+export interface IsolineSpec {
+  kind: InputName;
+  values?: number[];
+  count?: number;
+}
+
+export interface DiagramRequest {
+  /** A `DiagramInfo.id`. */
+  diagram: string;
+  isolines?: IsolineSpec[];
+  /** Points per isoline, 2–2000. Default 100. */
+  points?: number;
+  /** Default: CoolProp's plot domain for the fluid. */
+  limits?: Limits;
+}
+
+/** Coordinates on the diagram's axes. `null` is an unsolvable point: a break. */
+export interface Curve {
+  x: (number | null)[];
+  y: (number | null)[];
+}
+
+export interface IsolineCurve extends Curve {
+  kind: InputName;
+  value: number;
+}
+
+export interface AxisData extends Axis {
+  /** Span of the property over the domain; null if it cannot be determined. */
+  range: [number, number] | null;
+}
+
+/** A diagram for one fluid, projected onto its axes. */
+export interface DiagramData {
+  id: string;
+  x: AxisData;
+  y: AxisData;
+  limits: Limits;
+  /** Saturation dome: liquid (bubble) and vapor (dew) branches, meeting at the critical point. */
+  dome: { liquid: Curve; vapor: Curve };
+  isolines: IsolineCurve[];
 }
 
 /** Why a call failed. */

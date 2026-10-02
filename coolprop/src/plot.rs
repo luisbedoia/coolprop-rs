@@ -54,6 +54,19 @@ impl PlotProperty {
         Self::InternalEnergy,
     ];
 
+    /// The snake_case name used across the API (`"specific_volume"`, …).
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Pressure => "pressure",
+            Self::Temperature => "temperature",
+            Self::Density => "density",
+            Self::SpecificVolume => "specific_volume",
+            Self::Enthalpy => "enthalpy",
+            Self::Entropy => "entropy",
+            Self::InternalEnergy => "internal_energy",
+        }
+    }
+
     /// Reads this property from a solved state.
     pub fn of(self, s: &State) -> f64 {
         match self {
@@ -147,6 +160,16 @@ impl Diagram {
         })
     }
 
+    /// `"<y>_<x>"`, e.g. `"pressure_enthalpy"` for P–h.
+    pub fn id(&self) -> String {
+        format!("{}_{}", self.y.property.name(), self.x.property.name())
+    }
+
+    /// The catalog diagram with this [`Self::id`].
+    pub fn from_id(id: &str) -> Option<Diagram> {
+        Self::all().into_iter().find(|d| d.id() == id)
+    }
+
     /// Every distinct diagram, conventionally oriented (P–h, T–s, h–s, P–T,
     /// P–v, …): 20 of them.
     pub fn all() -> Vec<Diagram> {
@@ -182,7 +205,7 @@ impl Diagram {
 
 /// Temperature/pressure domain the isolines sweep and the axes span.
 #[derive(Debug, Clone, Copy, PartialEq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Limits {
     /// K
     pub t_min: f64,

@@ -152,3 +152,90 @@ fn schema_describes_inputs_pairs_properties_and_phases() {
         "description": "Liquid-vapor mixture inside the saturation dome"})
     );
 }
+
+#[test]
+fn schema_describes_the_diagram_catalog() {
+    let v: Value = serde_json::from_str(&coolprop_wasm::schema()).unwrap();
+    let schema = ok(&v);
+    assert_eq!(schema["plot_properties"].as_array().unwrap().len(), 7);
+    let diagrams = schema["diagrams"].as_array().unwrap();
+    assert_eq!(diagrams.len(), 20);
+    let ph = diagrams
+        .iter()
+        .find(|d| d["id"] == "pressure_enthalpy")
+        .unwrap();
+    assert_eq!(ph["x"], json!({"property": "enthalpy", "scale": "linear"}));
+    assert_eq!(ph["y"], json!({"property": "pressure", "scale": "log"}));
+    let isolines = ph["isolines"].as_array().unwrap();
+    assert!(isolines.contains(&json!("temperature")) && !isolines.contains(&json!("pressure")));
+}
+
+#[test]
+fn diagram_projects_dome_and_isolines_onto_its_axes() {
+    let v = call(
+        coolprop_wasm::diagram,
+        json!({"fluid": "Water", "diagram": "pressure_enthalpy", "points": 40, "isolines": [
+            {"kind": "temperature", "count": 3},
+            {"kind": "quality", "values": [0.5]},
+        ]}),
+    );
+    let d = ok(&v);
+    assert_eq!(d["x"]["property"], "enthalpy");
+    assert_eq!(d["y"]["scale"], "log");
+    let range = d["y"]["range"].as_array().unwrap();
+    assert!(range[0].as_f64().unwrap() < range[1].as_f64().unwrap());
+
+    let liquid = &d["dome"]["liquid"];
+    assert_eq!(
+        liquid["x"].as_array().unwrap().len(),
+        liquid["y"].as_array().unwrap().len()
+    );
+
+    let isolines = d["isolines"].as_array().unwrap();
+    assert_eq!(isolines.len(), 4, "3 isotherms + 1 iso-quality");
+    assert_eq!(isolines[3]["kind"], "quality");
+    assert_eq!(isolines[3]["value"], 0.5);
+    // Every point of the x = 0.5 line sits on the dome: enthalpy between
+    // the branches, pressure on the saturation curve.
+    for p in isolines[3]["y"].as_array().unwrap() {
+        let p = p.as_f64().expect("iso-quality is fully solved");
+        assert!(p > 0.0);
+    }
+}
+
+#[test]
+fn unsolvable_points_are_null() {
+    // This isentrope leaves the domain partway: breaks are null, the rest
+    // is data.
+    let v = call(
+        coolprop_wasm::diagram,
+        json!({"fluid": "Water", "diagram": "pressure_enthalpy", "points": 40,
+               "isolines": [{"kind": "entropy", "values": [12668.0]}]}),
+    );
+    let xs = ok(&v)["isolines"][0]["x"].as_array().unwrap().clone();
+    assert!(xs.iter().any(Value::is_null), "breaks are null");
+    assert!(xs.iter().any(Value::is_number), "and the rest is data");
+}
+
+#[test]
+fn diagram_errors_are_classified() {
+    let kind = |req| error_kind(&call(coolprop_wasm::diagram, req)).to_owned();
+    assert_eq!(
+        kind(json!({"fluid": "Nope", "diagram": "pressure_enthalpy"})),
+        "unknown_fluid"
+    );
+    assert_eq!(
+        kind(json!({"fluid": "Water", "diagram": "nope"})),
+        "invalid_input"
+    );
+    assert_eq!(
+        kind(json!({"fluid": "Water", "diagram": "pressure_enthalpy",
+                    "isolines": [{"kind": "pressure"}]})),
+        "invalid_input",
+        "an axis is not an isoline family"
+    );
+    assert_eq!(
+        kind(json!({"fluid": "Water", "diagram": "pressure_enthalpy", "points": 1_000_000})),
+        "invalid_input"
+    );
+}

@@ -2,12 +2,15 @@
 
 import type {
   CriticalPoint,
+  DiagramInfo,
+  DiagramRequest,
   ErrorBody,
   ErrorKind,
   FluidData,
   InputInfo,
   InputName,
   PhaseInfo,
+  PlotPropertyInfo,
   PropertyInfo,
   State,
   StateInputs,
@@ -20,7 +23,8 @@ export type Request =
   | { id: number; method: "init" }
   | { id: number; method: "fluid"; name: string }
   | { id: number; method: "state"; fluid: string; inputs: StateInputs }
-  | { id: number; method: "states"; fluid: string; inputs: readonly StateInputs[] };
+  | { id: number; method: "states"; fluid: string; inputs: readonly StateInputs[] }
+  | { id: number; method: "diagram"; fluid: string; request: DiagramRequest };
 
 /** `kind` is absent for failures outside CoolProp (e.g. the module not loading). */
 export interface WireError {
@@ -37,6 +41,8 @@ export interface InitResult {
   pairs: [InputName, InputName][];
   properties: PropertyInfo[];
   phases: PhaseInfo[];
+  plot_properties: PlotPropertyInfo[];
+  diagrams: DiagramInfo[];
 }
 
 export interface FluidResult {

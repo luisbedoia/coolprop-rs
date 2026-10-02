@@ -1,7 +1,7 @@
 {
   "name": "@luisbedoia/coolprop-rs-wasm",
   "version": "0.1.0",
-  "description": "Browser/Wasm bridge to coolprop-rs \u2014 a Rust thermophysical property library powered by CoolProp.",
+  "description": "Browser/Wasm bridge to coolprop-rs — a Rust thermophysical property library powered by CoolProp.",
   "license": "MIT",
   "author": "Luis Arias <ariasb.luis@gmail.com>",
   "repository": {

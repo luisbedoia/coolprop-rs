@@ -1,6 +1,7 @@
 [package]
 name = "coolprop"
 description = "Safe Rust wrapper over CoolProp"
+publish = false
 version.workspace = true
 authors.workspace = true
 edition.workspace = true

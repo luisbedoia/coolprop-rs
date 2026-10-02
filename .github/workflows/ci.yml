@@ -60,12 +60,6 @@ jobs:
         with:
           path: coolprop-sys/CoolProp/.cpm_cache
           key: cpm-${{ hashFiles('coolprop-sys/CoolProp/cmake/dependencies.cmake') }}
-      - name: Package version matches the Cargo workspace
-        run: |
-          cargo_version=$(sed -n '/^\[workspace.package\]/,/^\[/s/^version = "\(.*\)"/\1/p' Cargo.toml)
-          npm_version=$(node -p "require('./wasm-pkg/package.json').version")
-          echo "Cargo: $cargo_version, npm: $npm_version"
-          test "$cargo_version" = "$npm_version"
       - run: docker compose run --rm build-npm
       - run: docker compose run --rm test-npm
       # The exact artifacts that passed, for deploy.yml to publish.

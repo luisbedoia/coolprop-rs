@@ -1,10 +1,11 @@
 name: Deploy @luisbedoia/coolprop-rs-wasm
 
 # Publishes the npm package to GitHub Packages when a version tag is pushed
-# (e.g. v0.1.0). The full CI runs first; the package is built from the exact
-# wasm artifacts that passed it. The tag must match the Cargo workspace
-# version (which CI keeps equal to wasm-pkg/package.json). Publishing uses
-# the workflow's GITHUB_TOKEN; no extra secret is required.
+# (e.g. v0.2.1). The full CI runs first; the package is built from the exact
+# wasm artifacts that passed it. The version comes from the Cargo workspace
+# (`[workspace.package].version`, the single source): the tag must be
+# `v<version>`, and it is stamped into wasm-pkg/package.json at publish time.
+# Publishing uses the workflow's GITHUB_TOKEN; no extra secret is required.
 on:
   push:
     tags:
@@ -24,10 +25,12 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Tag matches the Cargo workspace version
+        id: version
         run: |
-          cargo_version=$(sed -n '/^\[workspace.package\]/,/^\[/s/^version = "\(.*\)"/\1/p' Cargo.toml)
-          echo "tag: $GITHUB_REF_NAME, Cargo: $cargo_version"
-          test "$GITHUB_REF_NAME" = "v$cargo_version"
+          version=$(sed -n '/^\[workspace.package\]/,/^\[/s/^version = "\(.*\)"/\1/p' Cargo.toml)
+          echo "tag: $GITHUB_REF_NAME, Cargo: $version"
+          test "$GITHUB_REF_NAME" = "v$version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - uses: actions/download-artifact@v8
         with:
@@ -43,6 +46,10 @@ jobs:
       - name: Install package dependencies
         working-directory: wasm-pkg
         run: npm ci
+
+      - name: Stamp the package version
+        working-directory: wasm-pkg
+        run: npm version "${{ steps.version.outputs.version }}" --no-git-tag-version
 
       # `prepack` compiles the TypeScript facade into lib/.
       - name: Publish to GitHub Packages

@@ -9,7 +9,8 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use coolprop::{CriticalPoint, Fluid, FluidData, Input, PropsError, State, Variant};
+use coolprop::schema::{self, InputInfo, PhaseInfo, PropertyInfo};
+use coolprop::{CriticalPoint, Fluid, FluidData, Input, InputKind, PropsError, State, Variant};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
@@ -22,6 +23,17 @@ pub fn version() -> String {
 pub fn catalog() -> String {
     let fluids: Vec<&FluidData> = Variant::ALL.iter().map(|v| v.data()).collect();
     ok(fluids)
+}
+
+/// `{"ok": {inputs, pairs, properties, phases}}`: the API's own description,
+/// see [`coolprop::schema`].
+pub fn schema() -> String {
+    ok(Schema {
+        inputs: schema::inputs(),
+        pairs: schema::pairs().collect(),
+        properties: schema::properties(),
+        phases: schema::phases().collect(),
+    })
 }
 
 /// Request `{fluid}` → `{"ok": {data, critical}}`.
@@ -74,6 +86,14 @@ struct StateRequest {
 struct StatesRequest {
     fluid: String,
     inputs: Vec<Map<String, Value>>,
+}
+
+#[derive(Serialize)]
+struct Schema {
+    inputs: &'static [InputInfo],
+    pairs: Vec<(InputKind, InputKind)>,
+    properties: &'static [PropertyInfo],
+    phases: Vec<PhaseInfo>,
 }
 
 #[derive(Serialize)]
@@ -179,22 +199,15 @@ fn solve(fluid: &Fluid, inputs: &Map<String, Value>) -> Result<State, PropsError
 }
 
 fn parse_input(name: &str, value: &Value) -> Result<Input, PropsError> {
+    let kind = InputKind::from_name(name).ok_or_else(|| {
+        let known: Vec<&str> = InputKind::ALL.iter().map(|k| k.name()).collect();
+        PropsError::InvalidInput(format!(
+            "unknown input `{name}`; expected one of {}",
+            known.join(", ")
+        ))
+    })?;
     let v = value
         .as_f64()
         .ok_or_else(|| PropsError::InvalidInput(format!("input `{name}` must be a number")))?;
-    Ok(match name {
-        "pressure" => Input::Pressure(v),
-        "temperature" => Input::Temperature(v),
-        "density" => Input::Density(v),
-        "enthalpy" => Input::Enthalpy(v),
-        "entropy" => Input::Entropy(v),
-        "internal_energy" => Input::InternalEnergy(v),
-        "quality" => Input::Quality(v),
-        other => {
-            return Err(PropsError::InvalidInput(format!(
-                "unknown input `{other}`; expected one of pressure, temperature, \
-                 density, enthalpy, entropy, internal_energy, quality"
-            )));
-        }
-    })
+    Ok(kind.with_value(v))
 }

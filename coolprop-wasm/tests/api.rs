@@ -115,3 +115,40 @@ fn states_batch_reports_each_point() {
     assert_eq!(error_kind(&items[1]), "coolprop");
     assert_eq!(items[2]["ok"]["quality"], 1.0);
 }
+
+#[test]
+fn schema_describes_inputs_pairs_properties_and_phases() {
+    let v: Value = serde_json::from_str(&coolprop_wasm::schema()).unwrap();
+    let schema = ok(&v);
+    let quality = schema["inputs"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|i| i["name"] == "quality")
+        .unwrap();
+    assert_eq!(
+        quality,
+        &json!({"name": "quality", "symbol": "x", "unit": "",
+        "description": "Vapor quality (vapor mass fraction)", "min": 0.0, "max": 1.0})
+    );
+    assert!(
+        schema["pairs"]
+            .as_array()
+            .unwrap()
+            .contains(&json!(["pressure", "temperature"]))
+    );
+    let cp = schema["properties"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|p| p["name"] == "cp")
+        .unwrap();
+    assert_eq!(cp["unit"], "J/(kg·K)");
+    assert_eq!(cp["nullable"], true);
+    assert_eq!(cp["category"], "thermodynamic");
+    assert_eq!(
+        schema["phases"][6],
+        json!({"name": "two_phase",
+        "description": "Liquid-vapor mixture inside the saturation dome"})
+    );
+}

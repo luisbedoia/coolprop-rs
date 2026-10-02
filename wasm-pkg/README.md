@@ -35,6 +35,20 @@ region, `cp` inside it) are `null`.
 `fluid.states([...])` solves many states in one call. A bad point does not
 fail the batch: its entry is the `CoolPropError` for that point.
 
+## Describing the API
+
+Build forms and tables from data instead of hard-coding lists:
+
+```ts
+cp.inputs();      // [{ name: "pressure", symbol: "p", unit: "Pa", description, min, max }, ...]
+cp.pairs();       // [["pressure", "temperature"], ...]: valid combinations for state()
+cp.properties();  // [{ name: "cp", symbol: "cp", unit: "J/(kg·K)", nullable: true, category: "thermodynamic" }, ...]
+cp.phases();      // [{ name: "two_phase", description: "Liquid-vapor mixture inside the saturation dome" }, ...]
+```
+
+Units are SI and an empty `unit` means dimensionless. Texts are English;
+labels and unit conversion are left to the application.
+
 ## Errors
 
 Failures throw `CoolPropError` with a `kind`:

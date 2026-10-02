@@ -15,6 +15,60 @@ import {
   type CoolProp,
   type CoolPropModule,
 } from "../src/index.js";
+import {
+  INPUT_PAIRS,
+  type InputName,
+  type Phase,
+  type PropertyName,
+} from "../src/types.js";
+
+/**
+ * Every member of each TS union, listed once. `satisfies` rejects unknown
+ * names; the `Exhaustive` checks reject missing ones. The schema tests below
+ * then compare these against what the module reports at runtime.
+ */
+const INPUT_NAMES = [
+  "pressure",
+  "temperature",
+  "density",
+  "enthalpy",
+  "entropy",
+  "internal_energy",
+  "quality",
+] as const satisfies readonly InputName[];
+const PHASES = [
+  "liquid",
+  "supercritical",
+  "supercritical_gas",
+  "supercritical_liquid",
+  "critical_point",
+  "gas",
+  "two_phase",
+] as const satisfies readonly Phase[];
+const PROPERTY_NAMES = [
+  "pressure",
+  "temperature",
+  "density",
+  "enthalpy",
+  "entropy",
+  "internal_energy",
+  "quality",
+  "cp",
+  "cv",
+  "viscosity",
+  "conductivity",
+  "prandtl",
+  "gibbs",
+  "compressibility",
+  "speed_of_sound",
+] as const satisfies readonly PropertyName[];
+type Exhaustive<All, Listed> = [Exclude<All, Listed>] extends [never] ? true : never;
+const exhaustive: [
+  Exhaustive<InputName, (typeof INPUT_NAMES)[number]>,
+  Exhaustive<Phase, (typeof PHASES)[number]>,
+  Exhaustive<PropertyName, (typeof PROPERTY_NAMES)[number]>,
+] = [true, true, true];
+void exhaustive;
 
 let cp: CoolProp;
 
@@ -31,6 +85,31 @@ describe("module", () => {
     const water = cp.catalog().find((f) => f.name === "Water");
     expect(water?.aliases).toContain("H2O");
     expect(water?.molar_mass).toBeCloseTo(0.018015268, 9);
+  });
+});
+
+describe("schema", () => {
+  it("lists exactly the inputs, phases and properties in the TS types", () => {
+    expect(cp.inputs().map((i) => i.name)).toEqual(INPUT_NAMES);
+    expect(cp.phases().map((p) => p.name)).toEqual(PHASES);
+    expect(cp.properties().map((p) => p.name)).toEqual(PROPERTY_NAMES);
+  });
+
+  it("lists exactly the pairs StateInputs accepts", () => {
+    expect(cp.pairs()).toEqual(INPUT_PAIRS);
+  });
+
+  it("describes units, bounds and nullability", () => {
+    const quality = cp.inputs().find((i) => i.name === "quality")!;
+    expect([quality.min, quality.max]).toEqual([0, 1]);
+    const viscosity = cp.properties().find((p) => p.name === "viscosity")!;
+    expect(viscosity).toMatchObject({ unit: "Pa·s", nullable: true, category: "transport" });
+  });
+
+  it("matches the keys of a solved state", () => {
+    const s = cp.fluid("Water").state({ pressure: 101325, temperature: 298.15 });
+    const keys = Object.keys(s).filter((k) => k !== "phase");
+    expect(keys.sort()).toEqual([...PROPERTY_NAMES].sort());
   });
 });
 

@@ -15,6 +15,16 @@ pub enum Phase {
 }
 
 impl Phase {
+    pub const ALL: [Phase; 7] = [
+        Self::Liquid,
+        Self::Supercritical,
+        Self::SupercriticalGas,
+        Self::SupercriticalLiquid,
+        Self::CriticalPoint,
+        Self::Gas,
+        Self::TwoPhase,
+    ];
+
     /// `None` for CoolProp's `NotImposed`/`Unknown` sentinels or any
     /// non-finite/out-of-range index.
     pub(crate) fn from_index(index: f64) -> Option<Self> {
@@ -43,6 +53,19 @@ impl Phase {
             Self::CriticalPoint => "critical_point",
             Self::Gas => "gas",
             Self::TwoPhase => "two_phase",
+        }
+    }
+
+    /// One-line English description (CoolProp's definition).
+    pub const fn description(&self) -> &'static str {
+        match self {
+            Self::Liquid => "Subcritical liquid",
+            Self::Supercritical => "Supercritical fluid (p > pc, T > Tc)",
+            Self::SupercriticalGas => "Supercritical gas (p < pc, T > Tc)",
+            Self::SupercriticalLiquid => "Supercritical liquid (p > pc, T < Tc)",
+            Self::CriticalPoint => "At the critical point",
+            Self::Gas => "Subcritical gas",
+            Self::TwoPhase => "Liquid-vapor mixture inside the saturation dome",
         }
     }
 }

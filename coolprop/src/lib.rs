@@ -17,6 +17,7 @@ mod fluid;
 mod input;
 mod phase;
 mod property;
+pub mod schema;
 mod state;
 
 pub use coolprop_sys::catalog;
@@ -25,6 +26,6 @@ pub use coolprop_sys::catalog::{FluidData, Variant};
 pub use error::PropsError;
 pub use ffi::version;
 pub use fluid::{CriticalPoint, Fluid};
-pub use input::Input;
+pub use input::{Input, InputKind};
 pub use phase::Phase;
 pub use state::State;

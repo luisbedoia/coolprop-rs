@@ -6,7 +6,7 @@ use std::ffi::{CStr, CString, c_char, c_long};
 use std::sync::{Mutex, MutexGuard};
 
 use crate::error::PropsError;
-use crate::input::Input;
+use crate::input::{Input, PAIRS};
 use crate::phase::Phase;
 use crate::property::Property;
 
@@ -246,41 +246,26 @@ fn param_index(name: &str) -> Result<c_long, PropsError> {
     }
 }
 
-/// Maps the two inputs to CoolProp's canonical pair name (`PT_INPUTS`, …),
-/// reordering the values to the pair's expected signature.
+/// Maps the two inputs to CoolProp's pair name (`PT_INPUTS`, …), reordering
+/// the values to the pair's signature.
 fn resolve_pair(in1: Input, in2: Input) -> Result<(&'static str, f64, f64), PropsError> {
-    use Property::*;
-    let (p1, v1) = (in1.property(), in1.value());
-    let (p2, v2) = (in2.property(), in2.value());
-    // (name, first property of the signature, second)
-    let (name, first, _) = match (p1, p2) {
-        (Pressure, Temperature) | (Temperature, Pressure) => ("PT_INPUTS", Pressure, Temperature),
-        (Pressure, Quality) | (Quality, Pressure) => ("PQ_INPUTS", Pressure, Quality),
-        (Quality, Temperature) | (Temperature, Quality) => ("QT_INPUTS", Quality, Temperature),
-        (Density, Pressure) | (Pressure, Density) => ("DmassP_INPUTS", Density, Pressure),
-        (Enthalpy, Pressure) | (Pressure, Enthalpy) => ("HmassP_INPUTS", Enthalpy, Pressure),
-        (Pressure, Entropy) | (Entropy, Pressure) => ("PSmass_INPUTS", Pressure, Entropy),
-        (Pressure, InternalEnergy) | (InternalEnergy, Pressure) => {
-            ("PUmass_INPUTS", Pressure, InternalEnergy)
-        }
-        (Density, Temperature) | (Temperature, Density) => ("DmassT_INPUTS", Density, Temperature),
-        (Entropy, Temperature) | (Temperature, Entropy) => ("SmassT_INPUTS", Entropy, Temperature),
-        (Density, Quality) | (Quality, Density) => ("DmassQ_INPUTS", Density, Quality),
-        (Density, Enthalpy) | (Enthalpy, Density) => ("DmassHmass_INPUTS", Density, Enthalpy),
-        (Density, Entropy) | (Entropy, Density) => ("DmassSmass_INPUTS", Density, Entropy),
-        (Density, InternalEnergy) | (InternalEnergy, Density) => {
-            ("DmassUmass_INPUTS", Density, InternalEnergy)
-        }
-        (Enthalpy, Entropy) | (Entropy, Enthalpy) => ("HmassSmass_INPUTS", Enthalpy, Entropy),
-        _ => {
-            return Err(PropsError::InvalidInput(format!(
-                "unsupported input pair: ({p1:?}, {p2:?})"
-            )));
-        }
-    };
-    Ok(if p1 == first {
-        (name, v1, v2)
-    } else {
-        (name, v2, v1)
-    })
+    let (k1, k2) = (in1.kind(), in2.kind());
+    PAIRS
+        .iter()
+        .find_map(|&(a, b, name)| {
+            if (a, b) == (k1, k2) {
+                Some((name, in1.value(), in2.value()))
+            } else if (a, b) == (k2, k1) {
+                Some((name, in2.value(), in1.value()))
+            } else {
+                None
+            }
+        })
+        .ok_or_else(|| {
+            PropsError::InvalidInput(format!(
+                "unsupported input pair: ({}, {})",
+                k1.name(),
+                k2.name()
+            ))
+        })
 }

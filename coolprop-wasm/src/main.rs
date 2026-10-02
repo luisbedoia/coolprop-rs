@@ -34,6 +34,11 @@ mod exports {
         into_c(coolprop_wasm::catalog())
     }
 
+    #[unsafe(no_mangle)]
+    pub extern "C" fn coolprop_schema() -> *mut c_char {
+        into_c(coolprop_wasm::schema())
+    }
+
     /// # Safety
     /// `input` must be null or a NUL-terminated UTF-8 string.
     #[unsafe(no_mangle)]
@@ -70,9 +75,10 @@ mod exports {
     }
 
     /// Referenced from `main` so the linker keeps the exports.
-    pub(crate) const ALL: [*const (); 6] = [
+    pub(crate) const ALL: [*const (); 7] = [
         coolprop_version as *const (),
         coolprop_catalog as *const (),
+        coolprop_schema as *const (),
         coolprop_fluid as *const (),
         coolprop_state as *const (),
         coolprop_states as *const (),

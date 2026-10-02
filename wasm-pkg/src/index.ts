@@ -17,6 +17,11 @@ import type {
   ErrorBody,
   ErrorKind,
   FluidData,
+  InputInfo,
+  InputName,
+  PhaseInfo,
+  PropertyInfo,
+  Schema,
   State,
   StateInputs,
 } from "./types.js";
@@ -44,6 +49,14 @@ export interface CoolProp {
   version(): string;
   /** Every curated fluid. */
   catalog(): readonly FluidData[];
+  /** Inputs that can fix a state, with symbol, unit and bounds. */
+  inputs(): readonly InputInfo[];
+  /** Pairs of inputs accepted by `fluid.state` (in either order). */
+  pairs(): readonly (readonly [InputName, InputName])[];
+  /** Numeric properties of a `State`, with symbol, unit and category. */
+  properties(): readonly PropertyInfo[];
+  /** Phases a `State` can be in. */
+  phases(): readonly PhaseInfo[];
   /** Opens a fluid by canonical name or alias. Throws {@link CoolPropError}. */
   fluid(name: string): Fluid;
 }
@@ -63,6 +76,7 @@ export interface CoolPropModule {
   _free(ptr: number): void;
   _coolprop_version(): number;
   _coolprop_catalog(): number;
+  _coolprop_schema(): number;
   _coolprop_fluid(request: number): number;
   _coolprop_state(request: number): number;
   _coolprop_states(request: number): number;
@@ -117,10 +131,16 @@ export async function loadCoolProp(options: LoadOptions = {}): Promise<CoolProp>
   }
 
   let catalog: readonly FluidData[] | undefined;
+  let schema: Schema | undefined;
+  const getSchema = () => (schema ??= unwrap<Schema>(take(m._coolprop_schema())));
 
   return {
     version: () => unwrap<string>(take(m._coolprop_version())),
     catalog: () => (catalog ??= Object.freeze(unwrap<FluidData[]>(take(m._coolprop_catalog())))),
+    inputs: () => getSchema().inputs,
+    pairs: () => getSchema().pairs,
+    properties: () => getSchema().properties,
+    phases: () => getSchema().phases,
     fluid(name: string): Fluid {
       const info = unwrap<{ data: FluidData; critical: CriticalPoint }>(
         call(m._coolprop_fluid, { fluid: name }),

@@ -89,27 +89,78 @@ export type InputName =
   | "internal_energy"
   | "quality";
 
+/**
+ * Every pair of inputs that fixes a state; `fluid.state` accepts either
+ * order. Mirrors `cp.pairs()` (a test keeps them identical).
+ */
+export const INPUT_PAIRS = [
+  ["pressure", "temperature"],
+  ["pressure", "quality"],
+  ["quality", "temperature"],
+  ["density", "pressure"],
+  ["enthalpy", "pressure"],
+  ["pressure", "entropy"],
+  ["pressure", "internal_energy"],
+  ["density", "temperature"],
+  ["entropy", "temperature"],
+  ["density", "quality"],
+  ["density", "enthalpy"],
+  ["density", "entropy"],
+  ["density", "internal_energy"],
+  ["enthalpy", "entropy"],
+] as const satisfies readonly (readonly [InputName, InputName])[];
+
 /** Exactly the inputs `A` and `B`; any other input is a type error. */
 type Pair<A extends InputName, B extends InputName> = { [K in A | B]: number } & {
   [K in Exclude<InputName, A | B>]?: never;
 };
 
-/** The two inputs that fix a state; only CoolProp's supported pairs type-check. */
-export type StateInputs =
-  | Pair<"pressure", "temperature">
-  | Pair<"pressure", "quality">
-  | Pair<"temperature", "quality">
-  | Pair<"pressure", "density">
-  | Pair<"pressure", "enthalpy">
-  | Pair<"pressure", "entropy">
-  | Pair<"pressure", "internal_energy">
-  | Pair<"temperature", "density">
-  | Pair<"temperature", "entropy">
-  | Pair<"density", "quality">
-  | Pair<"density", "enthalpy">
-  | Pair<"density", "entropy">
-  | Pair<"density", "internal_energy">
-  | Pair<"enthalpy", "entropy">;
+type PairOf<P> = P extends readonly [infer A extends InputName, infer B extends InputName]
+  ? Pair<A, B>
+  : never;
+
+/** The two inputs that fix a state; only the pairs in `INPUT_PAIRS` type-check. */
+export type StateInputs = PairOf<(typeof INPUT_PAIRS)[number]>;
+
+/** Numeric properties of a {@link State} (every field but `phase`). */
+export type PropertyName = Exclude<keyof State, "phase">;
+
+/** An input that can fix a state. Units are SI; "" means dimensionless. */
+export interface InputInfo {
+  name: InputName;
+  symbol: string;
+  unit: string;
+  description: string;
+  /** Inclusive bounds when fixed (only `quality`: 0..1). */
+  min: number | null;
+  max: number | null;
+}
+
+export type PropertyCategory = "thermodynamic" | "transport";
+
+/** A numeric property of a {@link State}. Units are SI; "" means dimensionless. */
+export interface PropertyInfo {
+  name: PropertyName;
+  symbol: string;
+  unit: string;
+  description: string;
+  /** Whether the value can be `null` for some states. */
+  nullable: boolean;
+  category: PropertyCategory;
+}
+
+export interface PhaseInfo {
+  name: Phase;
+  description: string;
+}
+
+/** The API's description of itself, as returned by the module. */
+export interface Schema {
+  inputs: InputInfo[];
+  pairs: [InputName, InputName][];
+  properties: PropertyInfo[];
+  phases: PhaseInfo[];
+}
 
 /** Why a call failed. */
 export type ErrorKind =

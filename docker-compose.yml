@@ -83,7 +83,7 @@ services:
         -C link-arg=-sMODULARIZE=1
         -C link-arg=-sEXPORT_ES6=1
         -C link-arg=-sEXPORT_NAME=createCoolPropModule
-        -C link-arg=-sEXPORTED_FUNCTIONS=['_main','_malloc','_free','_coolprop_version','_coolprop_catalog','_coolprop_fluid','_coolprop_state','_coolprop_states','_coolprop_free_string']
+        -C link-arg=-sEXPORTED_FUNCTIONS=['_main','_malloc','_free','_coolprop_version','_coolprop_catalog','_coolprop_schema','_coolprop_fluid','_coolprop_state','_coolprop_states','_coolprop_free_string']
         -C link-arg=-sEXPORTED_RUNTIME_METHODS=['UTF8ToString','stringToUTF8','lengthBytesUTF8','HEAPU8']
     command: >
       bash -c "cargo build --release -p coolprop-wasm --target wasm32-unknown-emscripten &&

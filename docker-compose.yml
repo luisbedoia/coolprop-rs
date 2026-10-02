@@ -1,4 +1,4 @@
-# Containerised test runner for coolprop-rs, mirroring cycle-forge's setup.
+# Containerised build and test runner for coolprop-rs.
 # CoolProp (C++) is compiled to wasm via emscripten; the wasm test binaries
 # are executed with node (see .cargo/config.toml runner).
 #

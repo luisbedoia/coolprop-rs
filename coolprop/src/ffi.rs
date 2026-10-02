@@ -158,21 +158,6 @@ impl AbstractStateHandle {
         })
     }
 
-    /// Hot path for plotting: `update`s and returns only the two requested
-    /// outputs, skipping the eager full-state reads `solve_state` does.
-    #[allow(dead_code)] // used by `plot`, ported next
-    pub(crate) fn solve_xy(
-        &self,
-        in1: Input,
-        in2: Input,
-        out1: Property,
-        out2: Property,
-    ) -> Result<(f64, f64), PropsError> {
-        let _guard = coolprop_lock();
-        self.update(in1, in2)?;
-        Ok((self.keyed_output(out1)?, self.keyed_output(out2)?))
-    }
-
     /// `update`s and returns all derived properties. Leaves the handle in
     /// the new state.
     pub(crate) fn solve_state(&self, in1: Input, in2: Input) -> Result<StateValues, PropsError> {

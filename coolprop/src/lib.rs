@@ -16,6 +16,7 @@ mod ffi;
 mod fluid;
 mod input;
 mod phase;
+pub mod plot;
 mod property;
 pub mod schema;
 mod state;

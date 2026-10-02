@@ -3,7 +3,7 @@
 //! keeps its property, crosses the dome the right way and stays monotonic.
 
 use coolprop::plot::{Diagram, Limits, PlotProperty, PropertyPlot, Scale};
-use coolprop::{Fluid, InputKind, PropsError, State, Variant};
+use coolprop::{Fluid, Input, InputKind, PropsError, State, Variant};
 
 fn water() -> Fluid {
     Fluid::new(Variant::Water).unwrap()
@@ -236,10 +236,7 @@ fn quality_zero_isoline_is_the_liquid_branch() {
     // Each point is the saturated liquid at its own temperature.
     for s in &q0 {
         let liq = w
-            .state(
-                coolprop::Input::Quality(0.0),
-                coolprop::Input::Temperature(s.temperature()),
-            )
+            .state(Input::Quality(0.0), Input::Temperature(s.temperature()))
             .unwrap();
         assert_rel(s.enthalpy(), liq.enthalpy(), 1e-6, "on the liquid branch");
     }
@@ -362,4 +359,83 @@ fn blend_isobar_glides_across_the_dome() {
     for pair in states.windows(2) {
         assert!(pair[1].entropy() > pair[0].entropy());
     }
+}
+
+/// Indices of the isoline's in-dome states, if that stretch is complete:
+/// enough points, and none unsolved between its first and last.
+fn complete_dome_stretch(states: &[Option<State>]) -> Result<(usize, usize), String> {
+    let in_dome: Vec<usize> = states
+        .iter()
+        .enumerate()
+        .filter(|(_, s)| s.is_some_and(|s| s.quality().is_some()))
+        .map(|(i, _)| i)
+        .collect();
+    if in_dome.len() < 20 {
+        return Err(format!("only {} points in the dome", in_dome.len()));
+    }
+    let (first, last) = (in_dome[0], in_dome[in_dome.len() - 1]);
+    match states[first..=last].iter().position(Option::is_none) {
+        Some(gap) => Err(format!("unsolved point at {} inside the dome", first + gap)),
+        None => Ok((first, last)),
+    }
+}
+
+/// Subcritical isobars and isotherms cross the dome without gaps for every
+/// fluid in the build — pseudo-pure blends included, whose two-phase states
+/// cannot all be solved the way pure fluids' can.
+#[test]
+fn every_fluid_crosses_the_dome_without_gaps() {
+    for &variant in Variant::ALL {
+        let fluid = Fluid::new(variant).unwrap();
+        let plot = PropertyPlot::new(&fluid).unwrap();
+        for kind in [InputKind::Pressure, InputKind::Temperature] {
+            for value in plot.suggested_values(kind, 3) {
+                let iso = plot.isoline(kind, value, 90);
+                if let Err(e) = complete_dome_stretch(&iso.states) {
+                    panic!("{} {kind:?}={value:.4e}: {e}", variant.name());
+                }
+            }
+        }
+    }
+}
+
+/// Inside the dome a blend's isotherm is not flat: pressure glides from the
+/// dew point up to the bubble point.
+#[test]
+fn blend_isotherm_glides_across_the_dome() {
+    let Some(variant) = Variant::from_name("R410A") else {
+        return; // not in this build's COOLPROP_FLUIDS
+    };
+    let fluid = Fluid::new(variant).unwrap();
+    let plot = PropertyPlot::new(&fluid).unwrap();
+    let t = plot.suggested_values(InputKind::Temperature, 3)[1];
+    let iso = plot.isoline(InputKind::Temperature, t, 90);
+    let (first, last) = complete_dome_stretch(&iso.states).unwrap();
+    let dome: Vec<State> = solved(&iso.states[first..=last]);
+    for pair in dome.windows(2) {
+        assert!(
+            pair[1].pressure() > pair[0].pressure(),
+            "pressure glides up"
+        );
+        assert_rel(pair[1].temperature(), t, 1e-9, "temperature stays fixed");
+    }
+    // Continuous with the single-phase stretches: no steps at either end.
+    let dew = fluid
+        .state(Input::Temperature(t), Input::Quality(1.0))
+        .unwrap();
+    let bubble = fluid
+        .state(Input::Temperature(t), Input::Quality(0.0))
+        .unwrap();
+    assert_rel(
+        dome[0].pressure(),
+        dew.pressure(),
+        1e-6,
+        "starts at the dew point",
+    );
+    assert_rel(
+        dome[dome.len() - 1].pressure(),
+        bubble.pressure(),
+        1e-6,
+        "ends at the bubble point",
+    );
 }

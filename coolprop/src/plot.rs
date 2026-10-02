@@ -395,21 +395,29 @@ impl<'a> PropertyPlot<'a> {
                 })
             }
             InputKind::Temperature if value < crit.temperature => {
-                // Superheated (low p) → dome (by quality, 1 → 0) → compressed.
+                // Superheated (low p) → dome → compressed liquid.
+                let dew = solve(Input::Temperature(value), Input::Quality(1.0));
+                let bubble = solve(Input::Temperature(value), Input::Quality(0.0));
                 split_sweep(points, |phase| match phase {
                     Phase3::Before(n) => {
-                        let p_dew = solve(Input::Temperature(value), Input::Quality(1.0))
-                            .map_or(l.p_min, |s| s.pressure());
+                        let p_dew = dew.map_or(l.p_min, |s| s.pressure());
                         sweep_log(l.p_min, p_dew * (1.0 - 1e-4), n, |p| {
                             solve(Input::Pressure(p), Input::Temperature(value))
                         })
                     }
-                    Phase3::Dome(n) => sweep_lin(1.0, 0.0, n, |q| {
-                        solve(Input::Temperature(value), Input::Quality(q))
-                    }),
+                    // Swept by quality, vapor → liquid. For a pure fluid the
+                    // pressure is the saturation pressure throughout; a
+                    // pseudo-pure blend glides from its dew to its bubble
+                    // pressure, so each point is solved for the pressure
+                    // where (p, x) has this temperature.
+                    Phase3::Dome(n) => match (dew, bubble) {
+                        (Some(dew), Some(bubble)) => sweep_lin(1.0, 0.0, n, |x| {
+                            isotherm_in_dome(f, value, x, dew.pressure(), bubble.pressure())
+                        }),
+                        _ => Vec::new(),
+                    },
                     Phase3::After(n) => {
-                        let p_bub = solve(Input::Temperature(value), Input::Quality(0.0))
-                            .map_or(l.p_max, |s| s.pressure());
+                        let p_bub = bubble.map_or(l.p_max, |s| s.pressure());
                         sweep_log(p_bub * (1.0 + 1e-4), l.p_max, n, |p| {
                             solve(Input::Pressure(p), Input::Temperature(value))
                         })
@@ -494,6 +502,45 @@ fn saturation_dome(fluid: &Fluid, points: usize) -> Result<SaturationDome, Props
         vapor.push(apex);
     }
     Ok(SaturationDome { liquid, vapor })
+}
+
+/// The two-phase state of quality `x` at temperature `t`, between the dew
+/// pressure `p_dew` (x = 1) and the bubble pressure `p_bub` (x = 0).
+///
+/// (T, x) with 0 < x < 1 cannot be solved for pseudo-pure blends, so this
+/// solves (p, x) for the pressure where the temperature is `t`: at fixed x,
+/// T(p, x) rises with p and brackets `t` between the two pressures. Regula
+/// falsi (Illinois) on ln p; for a pure fluid both pressures coincide.
+fn isotherm_in_dome(fluid: &Fluid, t: f64, x: f64, p_dew: f64, p_bub: f64) -> Option<State> {
+    let at = |p: f64| fluid.state(Input::Pressure(p), Input::Quality(x)).ok();
+    if (p_bub / p_dew - 1.0).abs() < 1e-9 {
+        return at(p_dew);
+    }
+    let (mut a, mut b) = (p_dew.ln(), p_bub.ln());
+    let (mut sa, mut sb) = (at(p_dew)?, at(p_bub)?);
+    let (mut fa, mut fb) = (sa.temperature() - t, sb.temperature() - t);
+    if fa * fb > 0.0 {
+        return None;
+    }
+    let tol = t * 1e-10;
+    for _ in 0..60 {
+        if fa.abs() <= tol {
+            return Some(sa);
+        }
+        if fb.abs() <= tol {
+            return Some(sb);
+        }
+        let c = (a * fb - b * fa) / (fb - fa);
+        let sc = at(c.exp())?;
+        let fc = sc.temperature() - t;
+        if fc * fb < 0.0 {
+            (a, fa, sa) = (b, fb, sb);
+        } else {
+            fa /= 2.0; // Illinois: halve the stale end so it keeps moving
+        }
+        (b, fb, sb) = (c, fc, sc);
+    }
+    (fb.abs() <= tol * 1e3).then_some(sb)
 }
 
 /// Temperatures where saturation states can be solved: just above the

@@ -22,6 +22,10 @@ mod bindings;
 
 pub(crate) struct BuildEnv {
     pub(crate) is_emscripten: bool,
+    /// Target OS and environment (`CARGO_CFG_TARGET_*`). Not `cfg!`, which
+    /// in a build script describes the host it runs on.
+    pub(crate) target_os: String,
+    pub(crate) target_env: String,
     pub(crate) manifest_dir: PathBuf,
     pub(crate) out_dir: PathBuf,
     pub(crate) install_root: PathBuf,
@@ -35,6 +39,8 @@ impl BuildEnv {
     fn from_cargo() -> Self {
         let target = env::var("TARGET").expect("TARGET not set by cargo");
         let is_emscripten = target.contains("emscripten");
+        let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
+        let target_env = env::var("CARGO_CFG_TARGET_ENV").unwrap_or_default();
         let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
         let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
         let install_root = out_dir.join("coolprop-install");
@@ -42,6 +48,8 @@ impl BuildEnv {
         let fluids = fluids::resolve_fluids();
         Self {
             is_emscripten,
+            target_os,
+            target_env,
             manifest_dir,
             out_dir,
             install_root,

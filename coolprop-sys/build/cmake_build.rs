@@ -9,8 +9,8 @@ use crate::BuildEnv;
 
 pub(crate) fn build_and_link(env: &BuildEnv) {
     let dst = run_cmake(env);
-    let lib_path = locate_static_lib(&dst, &env.install_root, env.is_emscripten);
-    emit_link_directives(lib_path.parent().unwrap(), env.is_emscripten);
+    let lib_path = locate_static_lib(&dst, env);
+    emit_link_directives(lib_path.parent().unwrap(), env);
 }
 
 fn run_cmake(env: &BuildEnv) -> PathBuf {
@@ -18,6 +18,9 @@ fn run_cmake(env: &BuildEnv) -> PathBuf {
     cfg.define("COOLPROP_STATIC_LIBRARY", "ON")
         .define("BUILD_SHARED_LIBS", "OFF")
         .define("COOLPROP_RELEASE", "ON")
+        // Otherwise CoolProp adds -m64/-m32 by pointer size, which GCC on
+        // non-x86 targets (aarch64 Linux) rejects; the target decides.
+        .define("FORCE_BITNESS_NATIVE", "ON")
         .define(
             "COOLPROP_INSTALL_PREFIX",
             env.install_root.to_string_lossy().as_ref(),
@@ -70,50 +73,61 @@ fn apply_emscripten_config(cfg: &mut cmake::Config) {
         .define("CMAKE_C_FLAGS_RELEASE", &flags);
 }
 
-fn locate_static_lib(dst: &Path, install_root: &Path, is_emscripten: bool) -> PathBuf {
-    let libname = if is_emscripten || !cfg!(target_os = "windows") {
-        "libCoolProp.a"
-    } else {
+/// The CoolProp archive this build produced. The build tree keeps archives
+/// from earlier builds (CoolProp installs into a directory named after the
+/// compiler and bitness), so pick the most recently written one rather than
+/// whichever a directory walk happens to reach first.
+fn locate_static_lib(dst: &Path, env: &BuildEnv) -> PathBuf {
+    // Only MSVC names static libraries `*.lib`; MinGW and Unix use `lib*.a`.
+    let libname = if env.target_env == "msvc" {
         "CoolProp.lib"
+    } else {
+        "libCoolProp.a"
     };
-    find_file(dst, libname)
-        .or_else(|| find_file(install_root, libname))
+    let mut found = Vec::new();
+    find_files(dst, libname, &mut found);
+    if !env.install_root.starts_with(dst) {
+        find_files(&env.install_root, libname, &mut found);
+    }
+    found
+        .into_iter()
+        .max_by_key(|p| p.metadata().and_then(|m| m.modified()).ok())
         .unwrap_or_else(|| {
             panic!(
-                "{} not produced by CMake build under {} or {}",
-                libname,
+                "{libname} not produced by CMake build under {} or {}",
                 dst.display(),
-                install_root.display()
+                env.install_root.display()
             )
         })
 }
 
-fn emit_link_directives(lib_dir: &Path, is_emscripten: bool) {
+fn emit_link_directives(lib_dir: &Path, env: &BuildEnv) {
     println!("cargo:rustc-link-search=native={}", lib_dir.display());
     println!("cargo:rustc-link-lib=static=CoolProp");
 
     // Emscripten's C++ runtime comes from `-sDEFAULT_TO_CXX` at the final
     // link (see .cargo/config.toml); a build script cannot propagate it.
-    if !is_emscripten {
-        if cfg!(target_os = "macos") {
-            println!("cargo:rustc-link-lib=dylib=c++");
-        } else if cfg!(target_os = "linux") {
-            println!("cargo:rustc-link-lib=dylib=stdc++");
+    // Otherwise link the target's C++ standard library (MSVC links its own).
+    if !env.is_emscripten {
+        match env.target_os.as_str() {
+            "macos" | "ios" | "freebsd" => println!("cargo:rustc-link-lib=dylib=c++"),
+            "linux" => println!("cargo:rustc-link-lib=dylib=stdc++"),
+            _ => {}
         }
     }
 }
 
-fn find_file(root: &Path, name: &str) -> Option<PathBuf> {
-    let entries = std::fs::read_dir(root).ok()?;
+/// Every file named `name` under `root`, recursively.
+fn find_files(root: &Path, name: &str, found: &mut Vec<PathBuf>) {
+    let Ok(entries) = std::fs::read_dir(root) else {
+        return;
+    };
     for entry in entries.flatten() {
         let path = entry.path();
         if path.is_dir() {
-            if let Some(hit) = find_file(&path, name) {
-                return Some(hit);
-            }
+            find_files(&path, name, found);
         } else if path.file_name().and_then(|s| s.to_str()) == Some(name) {
-            return Some(path);
+            found.push(path);
         }
     }
-    None
 }

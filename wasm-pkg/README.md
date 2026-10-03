@@ -43,11 +43,33 @@ Build forms and tables from data instead of hard-coding lists:
 cp.inputs();      // [{ name: "pressure", symbol: "p", unit: "Pa", description, min, max }, ...]
 cp.pairs();       // [["pressure", "temperature"], ...]: valid combinations for state()
 cp.properties();  // [{ name: "cp", symbol: "cp", unit: "J/(kg·K)", nullable: true, category: "thermodynamic" }, ...]
-cp.phases();      // [{ name: "two_phase", description: "Liquid-vapor mixture inside the saturation dome" }, ...]
+cp.phases();      // [{ name: "two_phase", label: "two-phase", description: "Liquid-vapor mixture inside the saturation dome" }, ...]
+cp.diagrams();    // [{ id: "pressure_enthalpy", x, y, isolines: ["temperature", ...] }, ...]
 ```
 
 Units are SI and an empty `unit` means dimensionless. Texts are English;
 labels and unit conversion are left to the application.
+
+## Diagrams
+
+`fluid.diagram(request)` returns the saturation dome and isolines projected
+onto a diagram's axes, ready to plot:
+
+```ts
+const d = water.diagram({
+  diagram: "pressure_enthalpy",
+  isolines: [{ kind: "temperature", count: 7, unit: { scale: 1, offset: -273.15 } }],
+});
+d.dome.liquid;    // { x: [...], y: [...] }, SI
+d.isolines;       // [{ kind: "temperature", value, x, y }, ...]
+```
+
+With `count`, isoline values are suggested: round in the given `unit`
+(here °C) and spread across the dome. `values` sets them explicitly. Points
+CoolProp cannot solve are `null`, a break in the curve. `points` and
+`dome_points` set the resolution; the work per request is bounded (at most
+30 isolines and 5000 points across them), past that it throws
+`invalid_input`.
 
 ## Errors
 

@@ -1,10 +1,10 @@
-//! A `Fluid` session has no memory: solving a state gives the same result
-//! whatever was solved before with it. CoolProp's `AbstractState` keeps the
-//! phase of its last flash, which once made every pressure–temperature
-//! flash fail after a density–quality one.
+//! A `Fluid` session never fails, nor gives other values, because of what
+//! was solved before with it. CoolProp's `AbstractState` kept the phase of
+//! its last flash, which made later pressure–temperature flashes fail or,
+//! worse, silently land on wrong roots.
 
 use coolprop::schema;
-use coolprop::{Fluid, Input, InputKind, PropsError, State, Variant};
+use coolprop::{Fluid, Input, InputKind, State, Variant};
 
 /// The value of an input in a solved state, if it has one.
 fn value_of(s: &State, kind: InputKind) -> Option<f64> {
@@ -56,59 +56,82 @@ fn reference_states(f: &Fluid) -> Vec<State> {
     .collect()
 }
 
-type Outcome = Result<(f64, f64), String>;
-
-fn outcome(r: Result<State, PropsError>) -> Outcome {
-    r.map(|s| (s.density(), s.enthalpy()))
-        .map_err(|e| e.to_string())
+/// One input pair taken from a reference state, and what solving it should
+/// give: a fresh session's result or, where a fresh session fails, the
+/// reference state itself.
+struct Case {
+    a: Input,
+    b: Input,
+    /// (ρ, h) to expect from any successful solve.
+    expected: (f64, f64),
+    fresh_solves: bool,
 }
 
 #[test]
-fn a_session_solves_like_a_fresh_one_whatever_came_before() {
+fn a_session_never_fails_nor_misleads_where_a_fresh_one_would_not() {
     let names = ["Water", "R134a", "CarbonDioxide", "R410A"];
+    let mut tested = 0;
     for variant in names.iter().filter_map(|n| Variant::from_name(n)) {
+        tested += 1;
         let fluid = Fluid::new(variant).unwrap();
-        // Every (reference state, input pair) as inputs, with the outcome
-        // of a fresh session as the expectation.
-        let mut cases: Vec<(Input, Input, Outcome)> = Vec::new();
+        let mut cases = Vec::new();
         for s in reference_states(&fluid) {
             for (a, b) in schema::pairs() {
                 let (Some(va), Some(vb)) = (value_of(&s, a), value_of(&s, b)) else {
                     continue;
                 };
                 let (ia, ib) = (a.with_value(va), b.with_value(vb));
-                let fresh = Fluid::new(variant).unwrap();
-                cases.push((ia, ib, outcome(fresh.state(ia, ib))));
+                let fresh = Fluid::new(variant).unwrap().state(ia, ib);
+                cases.push(Case {
+                    a: ia,
+                    b: ib,
+                    expected: fresh
+                        .as_ref()
+                        .map_or((s.density(), s.enthalpy()), |f| (f.density(), f.enthalpy())),
+                    fresh_solves: fresh.is_ok(),
+                });
             }
         }
         assert!(cases.len() > 60, "{} cases", cases.len());
 
-        // Every ordered couple (A, B): B right after A in one session must
-        // give what a fresh session gives. A flash in between can clear a
-        // stale phase, so each B is checked directly after each A.
+        // Every ordered couple (A, B), B right after A in one session (a
+        // flash in between could clear a stale phase). B may fail only where
+        // a fresh session fails too; it may succeed where a fresh session
+        // fails (CoolProp starts some flashes from the previous state, which
+        // helps blends converge), but never with other values.
         let shared = Fluid::new(variant).unwrap();
-        for (a1, a2, _) in &cases {
-            for (b1, b2, expected) in &cases {
-                let _ = shared.state(*a1, *a2);
-                let got = outcome(shared.state(*b1, *b2));
-                match (&got, expected) {
-                    (Ok((d, h)), Ok((de, he))) => {
+        for first in &cases {
+            for case in &cases {
+                let _ = shared.state(first.a, first.b);
+                let context = || {
+                    format!(
+                        "{}: {:?}, {:?} after {:?}, {:?}",
+                        variant.name(),
+                        case.a,
+                        case.b,
+                        first.a,
+                        first.b
+                    )
+                };
+                match shared.state(case.a, case.b) {
+                    Ok(got) => {
+                        let (d, h) = (got.density(), got.enthalpy());
+                        let (de, he) = case.expected;
                         let rel = |x: f64, y: f64| (x - y).abs() / y.abs().max(1.0);
                         assert!(
-                            rel(*d, *de) < 1e-6 && rel(*h, *he) < 1e-6,
-                            "{}: {b1:?}, {b2:?} after {a1:?}, {a2:?} gave ρ={d}, h={h}; \
-                             fresh ρ={de}, h={he}",
-                            variant.name()
+                            rel(d, de) < 1e-6 && rel(h, he) < 1e-6,
+                            "{} gave ρ={d}, h={h}; expected ρ={de}, h={he}",
+                            context()
                         );
                     }
-                    (Err(_), Err(_)) => {}
-                    _ => panic!(
-                        "{}: {b1:?}, {b2:?} after {a1:?}, {a2:?} gave {got:?}; \
-                         a fresh session gives {expected:?}",
-                        variant.name()
+                    Err(e) => assert!(
+                        !case.fresh_solves,
+                        "{} failed ({e}) where a fresh session solves it",
+                        context()
                     ),
                 }
             }
         }
     }
+    assert!(tested >= 3, "only {tested} of the fluids are in this build");
 }

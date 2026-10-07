@@ -74,6 +74,7 @@ fn render_catalog_tokens(entries: &[(String, FluidFields)]) -> proc_macro2::Toke
         let (name, cas, formula, aliases) = (&f.name, &f.cas, &f.formula, &f.aliases);
         let (molar_mass, acentric) = (f.molar_mass, f.acentric);
         let (t_triple, p_triple, t_max, p_max) = (f.t_triple, f.p_triple, f.t_max, f.p_max);
+        let pseudo_pure = f.pseudo_pure;
         quote! {
             FluidData {
                 name: #name,
@@ -86,6 +87,7 @@ fn render_catalog_tokens(entries: &[(String, FluidFields)]) -> proc_macro2::Toke
                 p_triple: #p_triple,
                 t_max: #t_max,
                 p_max: #p_max,
+                pseudo_pure: #pseudo_pure,
             }
         }
     });

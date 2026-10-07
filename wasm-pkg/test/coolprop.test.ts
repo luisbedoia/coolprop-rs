@@ -272,6 +272,16 @@ describe("state", () => {
     expect(water.state(vapor).density).toBeCloseTo(before.density, 10);
   });
 
+  it("flags pseudo-pure mixtures, which refuse density with quality", () => {
+    expect(cp.fluid("R410A").data.pseudo_pure).toBe(true);
+    expect(cp.fluid("Water").data.pseudo_pure).toBe(false);
+    const r410a = cp.fluid("R410A");
+    const wet = r410a.state({ pressure: 1.5e6, quality: 0.4 });
+    expect(() => r410a.state({ density: wet.density, quality: 0.4 })).toThrowError(
+      expect.objectContaining({ kind: "invalid_input" }),
+    );
+  });
+
   it("leaves single-phase properties undefined inside the dome", () => {
     const wet = cp.fluid("Water").state({ pressure: 101325, quality: 0.5 });
     expect([wet.cp, wet.cv, wet.viscosity, wet.conductivity, wet.speed_of_sound]).toEqual([

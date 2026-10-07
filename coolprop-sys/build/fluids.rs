@@ -62,6 +62,7 @@ pub(crate) struct FluidFields {
     pub(crate) p_triple: f64,
     pub(crate) t_max: f64,
     pub(crate) p_max: f64,
+    pub(crate) pseudo_pure: bool,
 }
 
 pub(crate) fn load_fluid_json(fluids_dir: &Path, file_stem: &str) -> serde_json::Value {
@@ -112,6 +113,10 @@ pub(crate) fn read_fluid(fluids_dir: &Path, file_stem: &str) -> FluidFields {
     let acentric = extract_f64(eos0, "acentric", &ctx_eos);
     let t_max = extract_f64(eos0, "T_max", &ctx_eos);
     let p_max = extract_f64(eos0, "p_max", &ctx_eos);
+    let pseudo_pure = eos0
+        .get("pseudo_pure")
+        .and_then(|x| x.as_bool())
+        .unwrap_or_else(|| panic!("{ctx_eos}: missing or non-boolean field `pseudo_pure`"));
 
     // CoolProp takes both its lower temperature limit (Tmin) and the triple
     // point from here, not from `EOS[0].Ttriple` (see FluidLibrary.h).
@@ -134,6 +139,7 @@ pub(crate) fn read_fluid(fluids_dir: &Path, file_stem: &str) -> FluidFields {
         p_triple,
         t_max,
         p_max,
+        pseudo_pure,
     }
 }
 

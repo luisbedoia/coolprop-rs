@@ -48,3 +48,37 @@ fn from_name_rejects_unknown_fluid() {
     let r = Fluid::from_name("Unobtainium");
     assert!(matches!(r, Err(PropsError::UnknownFluid(_))), "{r:?}");
 }
+
+/// Air is a pseudo-pure mixture: a catalog flag says so, and density with
+/// quality inside the dome is refused rather than solved inconsistently.
+#[test]
+fn pseudo_pure_mixtures_are_flagged_and_refuse_density_quality() {
+    use coolprop::{Fluid, Input, PropsError, Variant};
+    assert!(!Variant::Water.data().pseudo_pure);
+    let air = Fluid::new(Variant::from_name("Air").unwrap()).unwrap();
+    assert!(air.data().pseudo_pure);
+
+    let wet = air
+        .state(Input::Pressure(200_000.0), Input::Quality(0.4))
+        .unwrap();
+    let refused = air.state(Input::Density(wet.density()), Input::Quality(0.4));
+    assert!(
+        matches!(refused, Err(PropsError::InvalidInput(_))),
+        "{refused:?}"
+    );
+    let refused = air.state(Input::Quality(0.4), Input::Density(wet.density()));
+    assert!(
+        matches!(refused, Err(PropsError::InvalidInput(_))),
+        "{refused:?}"
+    );
+
+    // Pure fluids keep the pair.
+    let water = Fluid::new(Variant::Water).unwrap();
+    let s = water
+        .state(Input::Pressure(101_325.0), Input::Quality(0.4))
+        .unwrap();
+    let back = water
+        .state(Input::Density(s.density()), Input::Quality(0.4))
+        .unwrap();
+    assert!((back.pressure() / s.pressure() - 1.0).abs() < 1e-6);
+}

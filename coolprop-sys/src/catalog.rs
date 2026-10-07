@@ -30,6 +30,10 @@ pub struct FluidData {
     pub t_max: f64,
     /// Pa — EOS upper pressure limit (`EOS[0].p_max`).
     pub p_max: f64,
+    /// A mixture modelled as a single fluid (`EOS[0].pseudo_pure`), such as
+    /// Air or R410A. It evaporates over a range of temperatures: at a given
+    /// temperature its bubble and dew pressures differ.
+    pub pseudo_pure: bool,
 }
 
 include!(concat!(env!("OUT_DIR"), "/catalog_gen.rs"));

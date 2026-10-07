@@ -72,7 +72,26 @@ impl Fluid {
     }
 
     /// Solves the state fixed by two independent inputs, in either order.
+    ///
+    /// For a pseudo-pure mixture ([`FluidData::pseudo_pure`]) density and
+    /// quality inside the dome are rejected: CoolProp defines those states
+    /// by pressure and quality, and its density–quality solver is not
+    /// consistent with that. It fails from a fresh session and, started
+    /// from a previous state, lands on other states (h off by up to 2× for
+    /// R410A at x = 0.1).
     pub fn state(&self, in1: Input, in2: Input) -> Result<State, PropsError> {
+        if self.data().pseudo_pure
+            && let (Input::Density(_), Input::Quality(x)) | (Input::Quality(x), Input::Density(_)) =
+                (in1, in2)
+            && x > 0.0
+            && x < 1.0
+        {
+            return Err(PropsError::InvalidInput(format!(
+                "density and quality do not fix a two-phase state of {}, a pseudo-pure \
+                 mixture; use pressure and quality instead",
+                self.data().name
+            )));
+        }
         State::solve(&self.handle, in1, in2)
     }
 }

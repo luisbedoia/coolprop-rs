@@ -22,6 +22,13 @@ export interface FluidData {
   t_max: number;
   /** Pa — EOS upper pressure limit. */
   p_max: number;
+  /**
+   * A mixture modelled as a single fluid, such as Air or R410A: it evaporates
+   * over a range of temperatures, so at a given temperature its bubble and dew
+   * pressures differ. Density with quality does not fix its two-phase states
+   * (use pressure with quality).
+   */
+  pseudo_pure: boolean;
 }
 
 /** Critical point of the fluid's equation of state. */

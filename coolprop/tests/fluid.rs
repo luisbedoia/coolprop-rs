@@ -49,11 +49,13 @@ fn from_name_rejects_unknown_fluid() {
     assert!(matches!(r, Err(PropsError::UnknownFluid(_))), "{r:?}");
 }
 
-/// Air is a pseudo-pure mixture: a catalog flag says so, and density with
-/// quality inside the dome is refused rather than solved inconsistently.
+/// Air is a pseudo-pure mixture: a catalog flag says so, and inside the
+/// dome only states that agree with CoolProp's own definition (by pressure
+/// and quality) are returned. From pairs without pressure CoolProp's
+/// solvers fail or, worse, land on other states.
 #[test]
-fn pseudo_pure_mixtures_are_flagged_and_refuse_density_quality() {
-    use coolprop::{Fluid, Input, PropsError, Variant};
+fn pseudo_pure_mixtures_are_flagged_and_never_give_wrong_two_phase_states() {
+    use coolprop::{Fluid, Input, Variant};
     assert!(!Variant::Water.data().pseudo_pure);
     let air = Fluid::new(Variant::from_name("Air").unwrap()).unwrap();
     assert!(air.data().pseudo_pure);
@@ -61,18 +63,44 @@ fn pseudo_pure_mixtures_are_flagged_and_refuse_density_quality() {
     let wet = air
         .state(Input::Pressure(200_000.0), Input::Quality(0.4))
         .unwrap();
-    let refused = air.state(Input::Density(wet.density()), Input::Quality(0.4));
-    assert!(
-        matches!(refused, Err(PropsError::InvalidInput(_))),
-        "{refused:?}"
+    let (t, rho, h, s, u) = (
+        wet.temperature(),
+        wet.density(),
+        wet.enthalpy(),
+        wet.entropy(),
+        wet.internal_energy(),
     );
-    let refused = air.state(Input::Quality(0.4), Input::Density(wet.density()));
+    let same = |r: &coolprop::State| {
+        (r.enthalpy() - h).abs() < 1e-6 * h.abs().max(1.0) && (r.density() / rho - 1.0).abs() < 1e-6
+    };
+    for (a, b) in [
+        (Input::Temperature(t), Input::Density(rho)),
+        (Input::Temperature(t), Input::Entropy(s)),
+        (Input::Enthalpy(h), Input::Entropy(s)),
+        (Input::Density(rho), Input::Quality(0.4)),
+        (Input::Density(rho), Input::Enthalpy(h)),
+        (Input::Density(rho), Input::InternalEnergy(u)),
+        (Input::Pressure(wet.pressure()), Input::Enthalpy(h)),
+        (Input::Pressure(wet.pressure()), Input::Entropy(s)),
+    ] {
+        // In one session, after other states: a stale start must not help
+        // a wrong answer through either.
+        let _ = air.state(Input::Pressure(1e5), Input::Temperature(300.0));
+        if let Ok(r) = air.state(a, b) {
+            assert!(
+                same(&r),
+                "{a:?}, {b:?} gave h={} instead of {h}",
+                r.enthalpy()
+            );
+        }
+    }
+    // Pairs with pressure are CoolProp's own definition: they must solve.
     assert!(
-        matches!(refused, Err(PropsError::InvalidInput(_))),
-        "{refused:?}"
+        air.state(Input::Pressure(wet.pressure()), Input::Enthalpy(h))
+            .is_ok()
     );
 
-    // Pure fluids keep the pair.
+    // Pure fluids keep every pair.
     let water = Fluid::new(Variant::Water).unwrap();
     let s = water
         .state(Input::Pressure(101_325.0), Input::Quality(0.4))

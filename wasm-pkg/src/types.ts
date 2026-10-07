@@ -25,8 +25,9 @@ export interface FluidData {
   /**
    * A mixture modelled as a single fluid, such as Air or R410A: it evaporates
    * over a range of temperatures, so at a given temperature its bubble and dew
-   * pressures differ. Density with quality does not fix its two-phase states
-   * (use pressure with quality).
+   * pressures differ. Its states are best given with the pressure: from pairs
+   * without it, CoolProp cannot solve some states near or inside the dome, and
+   * `state()` throws rather than return a state that is not in equilibrium.
    */
   pseudo_pure: boolean;
 }

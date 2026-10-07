@@ -21,6 +21,7 @@ import {
   type Phase,
   type PlotProperty,
   type PropertyName,
+  type State,
 } from "../src/types.js";
 
 /**
@@ -272,14 +273,32 @@ describe("state", () => {
     expect(water.state(vapor).density).toBeCloseTo(before.density, 10);
   });
 
-  it("flags pseudo-pure mixtures, which refuse density with quality", () => {
+  it("flags pseudo-pure mixtures, which never give a state out of equilibrium", () => {
     expect(cp.fluid("R410A").data.pseudo_pure).toBe(true);
     expect(cp.fluid("Water").data.pseudo_pure).toBe(false);
+    // Inside the dome, from pairs without pressure, CoolProp may fail or
+    // land on other states: each solve is either the same state or throws.
     const r410a = cp.fluid("R410A");
     const wet = r410a.state({ pressure: 1.5e6, quality: 0.4 });
-    expect(() => r410a.state({ density: wet.density, quality: 0.4 })).toThrowError(
-      expect.objectContaining({ kind: "invalid_input" }),
-    );
+    const tries = [
+      { temperature: wet.temperature, density: wet.density },
+      { temperature: wet.temperature, entropy: wet.entropy },
+      { enthalpy: wet.enthalpy, entropy: wet.entropy },
+      { density: wet.density, enthalpy: wet.enthalpy },
+      { density: wet.density, quality: 0.4 },
+    ] as const;
+    for (const inputs of tries) {
+      let got: State | undefined;
+      try {
+        got = r410a.state(inputs);
+      } catch (error) {
+        expect(error).toBeInstanceOf(CoolPropError);
+      }
+      if (got) {
+        expect(got.enthalpy).toBeCloseTo(wet.enthalpy, 2);
+        expect(got.temperature).toBeCloseTo(wet.temperature, 6);
+      }
+    }
   });
 
   it("leaves single-phase properties undefined inside the dome", () => {

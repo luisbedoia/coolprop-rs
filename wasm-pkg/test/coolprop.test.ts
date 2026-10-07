@@ -262,6 +262,25 @@ describe("state", () => {
     expect(kindOf(() => water.state({ pressure: 1 } as never))).toBe("invalid_input");
   });
 
+  it("solves a state the same whatever was solved before", () => {
+    // A density–quality flash once left the session unable to solve
+    // pressure–temperature states near 1 atm.
+    const water = cp.fluid("Water");
+    const vapor = { pressure: 101000, temperature: 373.15 } as const;
+    const before = water.state(vapor);
+    water.state({ density: before.density, quality: 0.1 });
+    expect(water.state(vapor).density).toBeCloseTo(before.density, 10);
+  });
+
+  it("leaves single-phase properties undefined inside the dome", () => {
+    const wet = cp.fluid("Water").state({ pressure: 101325, quality: 0.5 });
+    expect([wet.cp, wet.cv, wet.viscosity, wet.conductivity, wet.speed_of_sound]).toEqual([
+      null, null, null, null, null,
+    ]);
+    const saturated = cp.fluid("Water").state({ pressure: 101325, quality: 0 });
+    expect(saturated.cp).toBeGreaterThan(4000);
+  });
+
   it("solves batches point by point", () => {
     const [liquid, bad, vapor] = cp.fluid("Water").states([
       { pressure: 101325, quality: 0 },

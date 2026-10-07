@@ -37,31 +37,51 @@ fn single_phase_water_has_all_derived_properties() {
 }
 
 #[test]
-fn two_phase_water_solves_with_well_formed_derived_properties() {
+fn single_phase_properties_are_undefined_inside_the_dome() {
     let f = Fluid::new(Variant::Water).unwrap();
-    // Two-phase mixture at 1 atm, x = 0.5. solve must still succeed.
+    // Wet steam at 1 atm, x = 0.5: CoolProp still returns numbers for cp,
+    // viscosity, Z, … there, which mean nothing for a liquid–vapor mixture.
     let s = f
         .state(Input::Pressure(101_325.0), Input::Quality(0.5))
         .unwrap();
-
-    // The core thermodynamic state is still fully defined.
-    assert!(s.pressure().is_finite());
-    assert!(s.enthalpy().is_finite());
     assert_eq!(s.quality(), Some(0.5));
+    assert!(s.enthalpy().is_finite());
+    assert_eq!(s.cp(), None, "cp");
+    assert_eq!(s.cv(), None, "cv");
+    assert_eq!(s.viscosity(), None, "viscosity");
+    assert_eq!(s.conductivity(), None, "conductivity");
+    assert_eq!(s.prandtl(), None, "prandtl");
+    assert_eq!(s.compressibility(), None, "compressibility");
+    assert_eq!(s.speed_of_sound(), None, "speed of sound");
+    // g is the same for both phases at saturation: defined.
+    assert!(s.gibbs().unwrap().is_finite());
+}
 
-    // Each derived property is either a finite value or None — the
-    // best-effort read must never surface a NaN or panic the solve.
-    let well_formed = |label: &str, v: Option<f64>| {
-        if let Some(v) = v {
-            assert!(v.is_finite(), "{label} should be finite when Some, got {v}");
-        }
+/// On the dome itself the single-phase properties are the saturated
+/// phase's: the same as just off the dome.
+#[test]
+fn saturated_states_keep_their_phase_properties() {
+    let f = Fluid::new(Variant::Water).unwrap();
+    let p = 101_325.0;
+    let liquid = f.state(Input::Pressure(p), Input::Quality(0.0)).unwrap();
+    let vapor = f.state(Input::Pressure(p), Input::Quality(1.0)).unwrap();
+    let t_sat = liquid.temperature();
+    let below = f
+        .state(Input::Pressure(p), Input::Temperature(t_sat - 0.01))
+        .unwrap();
+    let above = f
+        .state(Input::Pressure(p), Input::Temperature(t_sat + 0.01))
+        .unwrap();
+    let close = |a: Option<f64>, b: Option<f64>, label: &str| {
+        let (a, b) = (a.expect(label), b.expect(label));
+        assert!((a / b - 1.0).abs() < 1e-3, "{label}: {a} vs {b}");
     };
-    well_formed("cp", s.cp());
-    well_formed("cv", s.cv());
-    well_formed("viscosity", s.viscosity());
-    well_formed("conductivity", s.conductivity());
-    well_formed("prandtl", s.prandtl());
-    well_formed("gibbs", s.gibbs());
-    well_formed("compressibility", s.compressibility());
-    well_formed("speed_of_sound", s.speed_of_sound());
+    close(liquid.cp(), below.cp(), "liquid cp");
+    close(liquid.viscosity(), below.viscosity(), "liquid viscosity");
+    close(vapor.cp(), above.cp(), "vapor cp");
+    close(
+        vapor.conductivity(),
+        above.conductivity(),
+        "vapor conductivity",
+    );
 }

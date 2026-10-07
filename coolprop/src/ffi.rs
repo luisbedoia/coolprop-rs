@@ -132,6 +132,14 @@ impl AbstractStateHandle {
     fn update(&self, in1: Input, in2: Input) -> Result<(), PropsError> {
         let (pair_name, v1, v2) = resolve_pair(in1, in2)?;
         let pair = input_pair_index(pair_name)?;
+        // A previous flash can leave a phase behind that misleads the next
+        // one: after a density–quality flash, every pressure–temperature
+        // flash of the session fails ("Bad phase to solver_rho_Tp_SRK").
+        // Each update starts with no phase assumed.
+        call(|err, msg, len| {
+            // SAFETY: `self.handle` is live; `call` provides the out-parameters.
+            unsafe { coolprop_sys::AbstractState_unspecify_phase(self.handle, err, msg, len) }
+        })?;
         call(|err, msg, len| {
             // SAFETY: `self.handle` is live; `call` provides the out-parameters.
             unsafe { coolprop_sys::AbstractState_update(self.handle, pair, v1, v2, err, msg, len) }
@@ -174,8 +182,15 @@ impl AbstractStateHandle {
             .keyed_output(Property::Phase)
             .ok()
             .and_then(Phase::from_index);
-        // Best effort: some are undefined for some states (e.g. two-phase).
+        // Best effort: some are undefined for some states.
         let optional = |prop| self.keyed_output(prop).ok();
+        // Properties of a single phase. Strictly inside the dome CoolProp
+        // still returns numbers for most of them (cp ≈ 2.65 kJ/(kg·K) for
+        // steam at x = 0.5, Z ≈ 0.97), which are meaningless for a
+        // liquid–vapor mixture: they are left undefined. On the dome itself
+        // (x = 0 or 1) they are the saturated phase's, and kept.
+        let inside_dome = quality.is_some_and(|x| x > 0.0 && x < 1.0);
+        let single_phase = |prop| if inside_dome { None } else { optional(prop) };
 
         Ok(StateValues {
             pressure: self.keyed_output(Property::Pressure)?,
@@ -186,14 +201,14 @@ impl AbstractStateHandle {
             internal_energy: self.keyed_output(Property::InternalEnergy)?,
             quality,
             phase,
-            cp: optional(Property::Cp),
-            cv: optional(Property::Cv),
-            viscosity: optional(Property::Viscosity),
-            conductivity: optional(Property::Conductivity),
-            prandtl: optional(Property::Prandtl),
+            cp: single_phase(Property::Cp),
+            cv: single_phase(Property::Cv),
+            viscosity: single_phase(Property::Viscosity),
+            conductivity: single_phase(Property::Conductivity),
+            prandtl: single_phase(Property::Prandtl),
             gibbs: optional(Property::GibbsEnergy),
-            compressibility: optional(Property::Compressibility),
-            speed_of_sound: optional(Property::SpeedOfSound),
+            compressibility: single_phase(Property::Compressibility),
+            speed_of_sound: single_phase(Property::SpeedOfSound),
         })
     }
 }

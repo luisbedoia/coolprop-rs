@@ -32,6 +32,10 @@ fn run_cmake(env: &BuildEnv) -> PathBuf {
         .define("CPM_SOURCE_CACHE", cpm_source_cache(env))
         .cxxflag("-DCOOLPROP_LIB")
         .cxxflag("-DCOOLPROP_NO_INCBIN")
+        // Upstream switch: the factory stops building the TTSE, BICUBIC and
+        // SVDSBTL backends, so the linker drops them (~430 KB of wasm). We
+        // only use HEOS.
+        .cxxflag("-DNO_TABULAR_BACKENDS")
         .profile("Release");
 
     if env.is_emscripten {

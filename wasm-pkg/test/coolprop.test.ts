@@ -231,6 +231,40 @@ describe("fluid", () => {
   });
 });
 
+describe("reference states", () => {
+  const liquidAt = (t: number) => ({ temperature: t, quality: 0 }) as const;
+
+  it("measures enthalpy and entropy from the chosen one", () => {
+    const ashrae = cp.fluid("R134a", { reference: "ASHRAE" });
+    const plain = cp.fluid("R134a");
+    expect(ashrae.reference).toBe("ASHRAE");
+    expect(plain.reference).toBe("DEF");
+    const a = ashrae.state(liquidAt(233.15));
+    expect(Math.abs(a.enthalpy)).toBeLessThan(1e-6);
+    expect(Math.abs(a.entropy)).toBeLessThan(1e-9);
+    const iir = cp.fluid("R134a", { reference: "IIR" }).state(liquidAt(273.15));
+    expect(iir.enthalpy).toBeCloseTo(200e3, 6);
+    // Only h, s (and u) move: the default session keeps its values.
+    const d = plain.state(liquidAt(233.15));
+    expect(d.pressure).toBe(a.pressure);
+    expect(d.enthalpy - a.enthalpy).toBeGreaterThan(1e5);
+    expect(ashrae.states([liquidAt(233.15)])[0]).toEqual(a);
+    const dome = (f: typeof plain) =>
+      Math.min(
+        ...f
+          .diagram({ diagram: "pressure_enthalpy", dome_points: 20 })
+          .dome.liquid.x.filter((v): v is number => v !== null),
+      );
+    expect(dome(plain) - dome(ashrae)).toBeCloseTo(d.enthalpy - a.enthalpy, -2);
+  });
+
+  it("refuses one the fluid cannot take", () => {
+    expect(() => cp.fluid("Water", { reference: "ASHRAE" })).toThrowError(
+      expect.objectContaining({ kind: "invalid_input" }),
+    );
+  });
+});
+
 describe("state", () => {
   it("solves a liquid from pressure and temperature", () => {
     const s = cp.fluid("Water").state({ pressure: 101325, temperature: 298.15 });

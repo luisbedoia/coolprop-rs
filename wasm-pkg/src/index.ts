@@ -20,11 +20,13 @@ import type {
   ErrorBody,
   ErrorKind,
   FluidData,
+  FluidOptions,
   InputInfo,
   InputName,
   PhaseInfo,
   PlotPropertyInfo,
   PropertyInfo,
+  ReferenceState,
   Schema,
   State,
   StateInputs,
@@ -41,6 +43,8 @@ export interface Fluid {
   readonly data: FluidData;
   /** Critical point of the equation of state. */
   readonly critical: CriticalPoint;
+  /** Where its enthalpy and entropy are measured from. */
+  readonly reference: ReferenceState;
   /** Solves the state fixed by two inputs. Throws {@link CoolPropError}. */
   state(inputs: StateInputs): State;
   /**
@@ -73,8 +77,12 @@ export interface CoolPropInfo {
 }
 
 export interface CoolProp extends CoolPropInfo {
-  /** Opens a fluid by canonical name or alias. Throws {@link CoolPropError}. */
-  fluid(name: string): Fluid;
+  /**
+   * Opens a fluid by canonical name or alias, with a reference state for
+   * its enthalpy and entropy (default `"DEF"`). Throws {@link CoolPropError}:
+   * `invalid_input` for a reference the fluid cannot take.
+   */
+  fluid(name: string, options?: FluidOptions): Fluid;
 }
 
 export class CoolPropError extends Error {
@@ -160,21 +168,21 @@ export async function loadCoolProp(options: LoadOptions = {}): Promise<CoolProp>
     phases: () => getSchema().phases,
     plotProperties: () => getSchema().plot_properties,
     diagrams: () => getSchema().diagrams,
-    fluid(name: string): Fluid {
-      const info = unwrap<{ data: FluidData; critical: CriticalPoint }>(
-        call(m._coolprop_fluid, { fluid: name }),
+    fluid(name: string, options: FluidOptions = {}): Fluid {
+      const info = unwrap<{ data: FluidData; critical: CriticalPoint; reference: ReferenceState }>(
+        call(m._coolprop_fluid, { fluid: name, reference: options.reference ?? "DEF" }),
       );
-      const canonical = info.data.name;
+      const id = { fluid: info.data.name, reference: info.reference };
       return {
-        name: canonical,
+        name: info.data.name,
         data: info.data,
         critical: info.critical,
-        state: (inputs) => unwrap<State>(call(m._coolprop_state, { fluid: canonical, inputs })),
-        diagram: (request) =>
-          unwrap<DiagramData>(call(m._coolprop_diagram, { ...request, fluid: canonical })),
+        reference: info.reference,
+        state: (inputs) => unwrap<State>(call(m._coolprop_state, { ...id, inputs })),
+        diagram: (request) => unwrap<DiagramData>(call(m._coolprop_diagram, { ...request, ...id })),
         states: (inputs) =>
-          unwrap<Envelope<State>[]>(call(m._coolprop_states, { fluid: canonical, inputs })).map(
-            (item) => ("ok" in item ? item.ok : new CoolPropError(item.error)),
+          unwrap<Envelope<State>[]>(call(m._coolprop_states, { ...id, inputs })).map((item) =>
+            "ok" in item ? item.ok : new CoolPropError(item.error),
           ),
       };
     },

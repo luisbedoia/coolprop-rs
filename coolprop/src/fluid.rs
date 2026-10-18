@@ -4,6 +4,7 @@ use crate::error::PropsError;
 use crate::ffi::AbstractStateHandle;
 use crate::input::{Input, InputKind};
 use crate::phase::Phase;
+use crate::reference::Reference;
 use crate::state::State;
 
 /// Critical point as computed by the fluid's equation of state, in SI.
@@ -31,14 +32,32 @@ pub struct CriticalPoint {
 #[derive(Debug)]
 pub struct Fluid {
     variant: Variant,
+    reference: Reference,
     critical: CriticalPoint,
     handle: AbstractStateHandle,
 }
 
 impl Fluid {
-    /// Opens a session for a curated fluid.
+    /// Opens a session for a curated fluid, with its default reference state.
     pub fn new(variant: Variant) -> Result<Self, PropsError> {
-        let handle = AbstractStateHandle::new("HEOS", variant.name())?;
+        Self::with_reference(variant, Reference::Default)
+    }
+
+    /// Opens a session whose enthalpy and entropy are measured from
+    /// `reference`, e.g. [`Reference::Ashrae`] for the textbooks'
+    /// refrigerant tables. Fails (`InvalidInput`) for a reference the fluid
+    /// cannot have: one at a temperature below its triple point, such as
+    /// ASHRAE (−40 °C) for water. Other sessions are not affected.
+    ///
+    /// ```no_run
+    /// use coolprop::{Fluid, Input, Reference, Variant};
+    /// let r134a = Fluid::with_reference(Variant::R134a, Reference::Ashrae)?;
+    /// let liquid = r134a.state(Input::Temperature(233.15), Input::Quality(0.0))?;
+    /// assert!(liquid.enthalpy().abs() < 1e-6);
+    /// # Ok::<(), coolprop::PropsError>(())
+    /// ```
+    pub fn with_reference(variant: Variant, reference: Reference) -> Result<Self, PropsError> {
+        let handle = AbstractStateHandle::with_reference("HEOS", variant.name(), reference)?;
         let critical = CriticalPoint {
             temperature: handle.keyed_output_by_name("Tcrit")?,
             pressure: handle.keyed_output_by_name("pcrit")?,
@@ -46,6 +65,7 @@ impl Fluid {
         };
         Ok(Self {
             variant,
+            reference,
             critical,
             handle,
         })
@@ -60,6 +80,11 @@ impl Fluid {
 
     pub fn variant(&self) -> Variant {
         self.variant
+    }
+
+    /// Where the session's enthalpy and entropy are measured from.
+    pub fn reference(&self) -> Reference {
+        self.reference
     }
 
     /// Catalog constants (identity, molar mass, triple point, EOS limits).

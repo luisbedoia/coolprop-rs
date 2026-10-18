@@ -21,7 +21,11 @@ serde_json = "1.0.151"
 num-dual = "0.15"
 
 # coolprop-sys build-dependencies
-bindgen = "0.73"
+# Without its default `prettyplease` feature: it formats the generated
+# bindings by handing syn types to prettyplease, and bindgen accepts syn 2
+# or 3 with prettyplease 0.3 (syn 3 only), so Cargo can lock an
+# incompatible pair. The bindings are only include!d, never read.
+bindgen = { version = "0.73", default-features = false, features = ["runtime"] }
 cmake = "0.1.58"
 prettyplease = "0.3"
 proc-macro2 = "1.0.107"

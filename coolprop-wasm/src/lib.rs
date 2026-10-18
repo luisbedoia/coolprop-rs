@@ -4,6 +4,10 @@
 //! Every function returns a JSON envelope: `{"ok": <payload>}` or
 //! `{"error": {"kind": "unknown_fluid" | "invalid_input" | "coolprop",
 //! "message": "..."}}`.
+//!
+//! Every request naming a `fluid` may also give a `reference`: `"DEF"`
+//! (default), `"IIR"`, `"ASHRAE"` or `"NBP"`, where its enthalpy and entropy
+//! are measured from (see [`Reference`]).
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -11,7 +15,9 @@ use std::rc::Rc;
 
 use coolprop::plot::{Axis, Diagram, DisplayUnit, Limits, PlotProperty, PropertyPlot};
 use coolprop::schema::{self, DiagramInfo, InputInfo, PhaseInfo, PlotPropertyInfo, PropertyInfo};
-use coolprop::{CriticalPoint, Fluid, FluidData, Input, InputKind, PropsError, State, Variant};
+use coolprop::{
+    CriticalPoint, Fluid, FluidData, Input, InputKind, PropsError, Reference, State, Variant,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
@@ -54,7 +60,7 @@ pub fn diagram(request: &str) -> String {
         let d = Diagram::from_id(&req.diagram)
             .ok_or_else(|| PropsError::InvalidInput(format!("unknown diagram: {}", req.diagram)))?;
         req.check_bounds()?;
-        with_fluid(&req.fluid, |f| {
+        with_fluid(&req.fluid, req.reference, |f| {
             let limits = req.limits.unwrap_or_else(|| Limits::default_for(f));
             let plot = PropertyPlot::with_resolution(f, limits, req.dome_points)?;
             let (x, y) = (d.x.property, d.y.property);
@@ -106,13 +112,14 @@ pub fn diagram(request: &str) -> String {
     })
 }
 
-/// Request `{fluid}` → `{"ok": {data, critical}}`.
+/// Request `{fluid, reference?}` → `{"ok": {data, critical, reference}}`.
 pub fn fluid(request: &str) -> String {
     respond(request, |req: FluidRequest| {
-        with_fluid(&req.fluid, |f| {
+        with_fluid(&req.fluid, req.reference, |f| {
             Ok(FluidInfo {
                 data: f.data(),
                 critical: f.critical(),
+                reference: f.reference(),
             })
         })
     })
@@ -122,7 +129,7 @@ pub fn fluid(request: &str) -> String {
 /// `{"ok": State}`.
 pub fn state(request: &str) -> String {
     respond(request, |req: StateRequest| {
-        with_fluid(&req.fluid, |f| solve(f, &req.inputs))
+        with_fluid(&req.fluid, req.reference, |f| solve(f, &req.inputs))
     })
 }
 
@@ -131,7 +138,7 @@ pub fn state(request: &str) -> String {
 /// not fail the batch.
 pub fn states(request: &str) -> String {
     respond(request, |req: StatesRequest| {
-        with_fluid(&req.fluid, |f| {
+        with_fluid(&req.fluid, req.reference, |f| {
             Ok(req
                 .inputs
                 .iter()
@@ -144,17 +151,23 @@ pub fn states(request: &str) -> String {
 #[derive(Deserialize)]
 struct FluidRequest {
     fluid: String,
+    #[serde(default)]
+    reference: Reference,
 }
 
 #[derive(Deserialize)]
 struct StateRequest {
     fluid: String,
+    #[serde(default)]
+    reference: Reference,
     inputs: Map<String, Value>,
 }
 
 #[derive(Deserialize)]
 struct StatesRequest {
     fluid: String,
+    #[serde(default)]
+    reference: Reference,
     inputs: Vec<Map<String, Value>>,
 }
 
@@ -174,6 +187,8 @@ const DEFAULT_COUNT: usize = 5;
 #[derive(Deserialize)]
 struct DiagramRequest {
     fluid: String,
+    #[serde(default)]
+    reference: Reference,
     diagram: String,
     #[serde(default)]
     isolines: Vec<IsolineSpec>,
@@ -306,6 +321,7 @@ struct Schema {
 struct FluidInfo {
     data: &'static FluidData,
     critical: CriticalPoint,
+    reference: Reference,
 }
 
 #[derive(Serialize)]
@@ -368,25 +384,29 @@ fn to_json<T: Serialize>(value: &T) -> String {
 }
 
 thread_local! {
-    /// One open `Fluid` per curated fluid, reused across calls: opening an
-    /// `AbstractState` costs far more than solving a state with it. The
-    /// catalog bounds the size; wasm runs on a single thread.
-    static FLUIDS: RefCell<HashMap<Variant, Rc<Fluid>>> = RefCell::new(HashMap::new());
+    /// One open `Fluid` per curated fluid and reference state, reused
+    /// across calls: opening an `AbstractState` costs far more than solving
+    /// a state with it. The catalog and the four references bound the size;
+    /// wasm runs on a single thread.
+    static FLUIDS: RefCell<HashMap<(Variant, Reference), Rc<Fluid>>> =
+        RefCell::new(HashMap::new());
 }
 
-/// Runs `f` with the cached session for `name` (canonical name or alias),
-/// opening it on first use.
+/// Runs `f` with the cached session for `name` (canonical name or alias)
+/// and `reference`, opening it on first use.
 fn with_fluid<T>(
     name: &str,
+    reference: Reference,
     f: impl FnOnce(&Fluid) -> Result<T, PropsError>,
 ) -> Result<T, PropsError> {
     let variant = Variant::from_name(name).ok_or_else(|| PropsError::UnknownFluid(name.into()))?;
-    let cached = FLUIDS.with_borrow(|m| m.get(&variant).cloned());
+    let key = (variant, reference);
+    let cached = FLUIDS.with_borrow(|m| m.get(&key).cloned());
     let fluid = match cached {
         Some(fluid) => fluid,
         None => {
-            let fluid = Rc::new(Fluid::new(variant)?);
-            FLUIDS.with_borrow_mut(|m| m.insert(variant, Rc::clone(&fluid)));
+            let fluid = Rc::new(Fluid::with_reference(variant, reference)?);
+            FLUIDS.with_borrow_mut(|m| m.insert(key, Rc::clone(&fluid)));
             fluid
         }
     };

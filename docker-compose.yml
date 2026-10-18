@@ -114,7 +114,7 @@ services:
   # deps instead of inheriting the host's (e.g. macOS) binaries. The Playwright
   # image version must match the `playwright` dependency in wasm-pkg.
   test-npm:
-    image: mcr.microsoft.com/playwright:v1.63.0-noble
+    image: mcr.microsoft.com/playwright:v1.64.0-noble
     working_dir: /work/wasm-pkg
     volumes:
       - .:/work

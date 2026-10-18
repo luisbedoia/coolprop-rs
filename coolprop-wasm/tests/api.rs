@@ -315,3 +315,64 @@ fn diagram_work_is_bounded() {
     let dome = d["dome"]["liquid"]["x"].as_array().unwrap().len();
     assert!(dome > MAX_DOME_POINTS * 9 / 10, "{dome} dome points");
 }
+
+#[test]
+fn a_reference_moves_enthalpy_and_entropy_only() {
+    let state = |reference: Value| {
+        let mut req = json!({"fluid": "R134a", "inputs": {"temperature": 233.15, "quality": 0.0}});
+        if !reference.is_null() {
+            req["reference"] = reference;
+        }
+        ok(&call(coolprop_wasm::state, req)).clone()
+    };
+    let (default, ashrae) = (state(Value::Null), state(json!("ASHRAE")));
+    assert!(ashrae["enthalpy"].as_f64().unwrap().abs() < 1e-6);
+    assert!(ashrae["entropy"].as_f64().unwrap().abs() < 1e-9);
+    assert!(default["enthalpy"].as_f64().unwrap() > 1e5);
+    assert_eq!(ashrae["pressure"], default["pressure"]);
+    // "DEF" is the default, and the cached default session is not affected.
+    assert_eq!(state(json!("DEF")), default);
+    assert_eq!(state(Value::Null), default);
+
+    let info = call(
+        coolprop_wasm::fluid,
+        json!({"fluid": "R134a", "reference": "IIR"}),
+    );
+    assert_eq!(ok(&info)["reference"], "IIR");
+    assert_eq!(
+        ok(&call(coolprop_wasm::fluid, json!({"fluid": "R134a"})))["reference"],
+        "DEF"
+    );
+}
+
+#[test]
+fn an_impossible_or_unknown_reference_is_invalid_input() {
+    let v = call(
+        coolprop_wasm::state,
+        json!({"fluid": "Water", "reference": "ASHRAE", "inputs": {"temperature": 300.0, "pressure": 1e5}}),
+    );
+    assert_eq!(error_kind(&v), "invalid_input");
+    let v = call(
+        coolprop_wasm::fluid,
+        json!({"fluid": "Water", "reference": "ashrae"}),
+    );
+    assert_eq!(error_kind(&v), "invalid_input");
+}
+
+#[test]
+fn diagrams_follow_the_reference() {
+    let dome_h = |reference: &str| {
+        let v = call(
+            coolprop_wasm::diagram,
+            json!({"fluid": "R134a", "reference": reference, "diagram": "pressure_enthalpy", "dome_points": 20}),
+        );
+        ok(&v)["dome"]["liquid"]["x"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(Value::as_f64)
+            .fold(f64::INFINITY, f64::min)
+    };
+    // The same dome, shifted by the offset between the references.
+    assert!(dome_h("DEF") - dome_h("ASHRAE") > 1e5);
+}

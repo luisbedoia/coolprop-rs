@@ -18,6 +18,7 @@ mod input;
 mod phase;
 pub mod plot;
 mod property;
+mod reference;
 pub mod schema;
 mod state;
 
@@ -29,4 +30,5 @@ pub use ffi::version;
 pub use fluid::{CriticalPoint, Fluid};
 pub use input::{Input, InputKind};
 pub use phase::Phase;
+pub use reference::Reference;
 pub use state::State;

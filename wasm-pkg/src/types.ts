@@ -1,5 +1,27 @@
 /** JSON shapes exchanged with the coolprop wasm module. All values are SI. */
 
+/**
+ * Where a fluid's enthalpy and entropy are measured from. Only their
+ * absolute values change, not differences nor other properties.
+ *
+ * - `"DEF"`: the fluid's own, from its CoolProp equation of state.
+ * - `"IIR"`: h = 200 kJ/kg, s = 1 kJ/(kg·K) for the saturated liquid at 0 °C.
+ * - `"ASHRAE"`: h = s = 0 for the saturated liquid at −40 °C (the
+ *   textbooks' refrigerant tables).
+ * - `"NBP"`: h = s = 0 for the saturated liquid at 1 atm.
+ *
+ * A fluid cannot take a reference below its triple point (or, for IIR and
+ * ASHRAE, above its critical one): water, for one, takes neither IIR nor
+ * ASHRAE; its default is already the steam tables'.
+ */
+export type ReferenceState = "DEF" | "IIR" | "ASHRAE" | "NBP";
+
+/** How to open a fluid. */
+export interface FluidOptions {
+  /** Default `"DEF"`. */
+  reference?: ReferenceState;
+}
+
 /** Curated-catalog constants for one fluid. */
 export interface FluidData {
   /** Canonical CoolProp name. */

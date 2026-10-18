@@ -18,6 +18,8 @@ import type {
   DiagramData,
   DiagramRequest,
   FluidData,
+  FluidOptions,
+  ReferenceState,
   State,
   StateInputs,
 } from "./types.js";
@@ -29,6 +31,8 @@ export interface WorkerFluid {
   readonly data: FluidData;
   /** Critical point of the equation of state. */
   readonly critical: CriticalPoint;
+  /** Where its enthalpy and entropy are measured from. */
+  readonly reference: ReferenceState;
   /** Solves the state fixed by two inputs. Rejects with `CoolPropError`. */
   state(inputs: StateInputs): Promise<State>;
   /** Solves many states; each entry is a `State` or that point's `CoolPropError`. */
@@ -42,8 +46,12 @@ export interface WorkerFluid {
  * only solving goes through the worker.
  */
 export interface CoolPropWorker extends CoolPropInfo {
-  /** Opens a fluid by canonical name or alias. Rejects with `CoolPropError`. */
-  fluid(name: string): Promise<WorkerFluid>;
+  /**
+   * Opens a fluid by canonical name or alias, with a reference state for
+   * its enthalpy and entropy (default `"DEF"`). Rejects with
+   * `CoolPropError`: `invalid_input` for a reference the fluid cannot take.
+   */
+  fluid(name: string, options?: FluidOptions): Promise<WorkerFluid>;
   /** Stops the worker; pending and later calls reject. */
   terminate(): void;
 }
@@ -114,16 +122,22 @@ export async function loadCoolPropWorker(options: WorkerOptions = {}): Promise<C
     phases: () => init.phases,
     plotProperties: () => init.plot_properties,
     diagrams: () => init.diagrams,
-    async fluid(name: string): Promise<WorkerFluid> {
-      const f = await request<FluidResult>({ method: "fluid", name });
+    async fluid(name: string, options: FluidOptions = {}): Promise<WorkerFluid> {
+      const f = await request<FluidResult>({
+        method: "fluid",
+        name,
+        reference: options.reference ?? "DEF",
+      });
+      const id = { fluid: f.name, reference: f.reference };
       return {
         name: f.name,
         data: f.data,
         critical: f.critical,
-        state: (inputs) => request<State>({ method: "state", fluid: f.name, inputs }),
-        diagram: (spec) => request<DiagramData>({ method: "diagram", fluid: f.name, request: spec }),
+        reference: f.reference,
+        state: (inputs) => request<State>({ method: "state", ...id, inputs }),
+        diagram: (spec) => request<DiagramData>({ method: "diagram", ...id, request: spec }),
         states: async (inputs) =>
-          (await request<StatesResult>({ method: "states", fluid: f.name, inputs })).map((item) =>
+          (await request<StatesResult>({ method: "states", ...id, inputs })).map((item) =>
             "ok" in item ? item.ok : new CoolPropError(item.error),
           ),
       };

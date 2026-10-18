@@ -35,6 +35,34 @@ region, `cp` inside it) are `null`.
 `fluid.states([...])` solves many states in one call. A bad point does not
 fail the batch: its entry is the `CoolPropError` for that point.
 
+## Reference states
+
+Enthalpy and entropy are measured from a reference state. By default it is
+each fluid's own (`"DEF"`). Another can be chosen when the fluid is opened,
+e.g. ASHRAE, which the textbooks' refrigerant tables use:
+
+```ts
+const r134a = cp.fluid("R134a", { reference: "ASHRAE" });
+r134a.state({ temperature: 233.15, quality: 0 }).enthalpy; // 0
+```
+
+| `reference` | Fixes |
+| ----------- | ----- |
+| `"DEF"`     | the fluid's own (default) |
+| `"IIR"`     | h = 200 kJ/kg, s = 1 kJ/(kg·K) for the saturated liquid at 0 °C |
+| `"ASHRAE"`  | h = s = 0 for the saturated liquid at −40 °C |
+| `"NBP"`     | h = s = 0 for the saturated liquid at 1 atm |
+
+Only enthalpy, entropy and internal energy move, by a constant per fluid:
+differences, other properties and diagrams on other axes do not change.
+Inputs (`enthalpy`, `entropy`, `internal_energy`) and diagrams are read in
+the same reference. Other open fluids keep theirs.
+
+A fluid cannot take a reference it has no saturated liquid for: water takes
+neither IIR nor ASHRAE (its default is already the steam tables'), carbon
+dioxide not NBP. `cp.fluid` then throws a `CoolPropError` of kind
+`invalid_input`.
+
 ## Describing the API
 
 Build forms and tables from data instead of hard-coding lists:

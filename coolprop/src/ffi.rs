@@ -9,6 +9,7 @@ use crate::error::PropsError;
 use crate::input::{Input, PAIRS};
 use crate::phase::Phase;
 use crate::property::Property;
+use crate::reference::Reference;
 
 const ERR_BUF_LEN: usize = 1024;
 
@@ -23,6 +24,20 @@ fn coolprop_lock() -> MutexGuard<'static, ()> {
 pub fn version() -> String {
     let _guard = coolprop_lock();
     get_global_param_string("version", 256).unwrap_or_else(|| String::from("unknown"))
+}
+
+/// Sets the reference state of `fluid` in CoolProp's library, for handles
+/// created afterwards. Caller must hold `coolprop_lock()`.
+fn set_reference_state(fluid: &str, reference: &str) -> Result<(), String> {
+    let c_fluid = CString::new(fluid).map_err(|e| e.to_string())?;
+    let c_reference = CString::new(reference).map_err(|e| e.to_string())?;
+    // SAFETY: both are NUL-terminated.
+    let ok = unsafe { coolprop_sys::set_reference_stateS(c_fluid.as_ptr(), c_reference.as_ptr()) };
+    if ok == 1 {
+        Ok(())
+    } else {
+        Err(last_errstring())
+    }
 }
 
 /// Caller must hold `coolprop_lock()`.
@@ -105,10 +120,37 @@ pub(crate) struct AbstractStateHandle {
 }
 
 impl AbstractStateHandle {
-    pub(crate) fn new(backend: &str, fluids: &str) -> Result<Self, PropsError> {
+    /// A handle whose enthalpy and entropy are measured from `reference`.
+    ///
+    /// CoolProp keeps the reference in its fluid library, global, and a
+    /// handle copies it when created: this sets it, creates the handle and
+    /// restores the default, all under the lock, so no other handle sees
+    /// it.
+    pub(crate) fn with_reference(
+        backend: &str,
+        fluid: &str,
+        reference: Reference,
+    ) -> Result<Self, PropsError> {
+        let _guard = coolprop_lock();
+        if reference == Reference::Default {
+            return Self::new_locked(backend, fluid);
+        }
+        set_reference_state(fluid, reference.name()).map_err(|e| {
+            PropsError::InvalidInput(format!(
+                "{fluid} cannot use the {} reference state: {e}",
+                reference.name()
+            ))
+        })?;
+        let handle = Self::new_locked(backend, fluid);
+        // Restoring the default cannot fail: it only clears the offsets.
+        let _ = set_reference_state(fluid, Reference::Default.name());
+        handle
+    }
+
+    /// Caller must hold `coolprop_lock()`.
+    fn new_locked(backend: &str, fluids: &str) -> Result<Self, PropsError> {
         let c_backend = CString::new(backend)?;
         let c_fluids = CString::new(fluids)?;
-        let _guard = coolprop_lock();
         let handle = call(|err, msg, len| {
             // SAFETY: inputs are NUL-terminated; `call` provides valid
             // errcode/message out-parameters.

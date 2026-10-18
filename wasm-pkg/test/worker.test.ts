@@ -100,6 +100,22 @@ describe("loadCoolPropWorker", () => {
   });
 });
 
+describe("reference states", () => {
+  it("opens one session per fluid and reference", async () => {
+    const [ashrae, plain] = await Promise.all([
+      cp.fluid("R134a", { reference: "ASHRAE" }),
+      cp.fluid("R134a"),
+    ]);
+    expect([ashrae.reference, plain.reference]).toEqual(["ASHRAE", "DEF"]);
+    const liquid = { temperature: 233.15, quality: 0 } as const;
+    const [a, d] = await Promise.all([ashrae.state(liquid), plain.state(liquid)]);
+    expect(a).toEqual(sync.fluid("R134a", { reference: "ASHRAE" }).state(liquid));
+    expect(d).toEqual(sync.fluid("R134a").state(liquid));
+    expect(Math.abs(a.enthalpy)).toBeLessThan(1e-6);
+    await expect(cp.fluid("Water", { reference: "IIR" })).rejects.toBeInstanceOf(CoolPropError);
+  });
+});
+
 describe("terminate", () => {
   it("rejects pending and later calls", async () => {
     const own = await loadCoolPropWorker();

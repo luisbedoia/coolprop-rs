@@ -4,6 +4,7 @@
  */
 
 import { CoolPropError, loadCoolProp, type Fluid } from "./index.js";
+import type { ReferenceState } from "./types.js";
 import type { FluidResult, InitResult, Request, Response, StatesResult, WireError } from "./protocol.js";
 
 // Typed locally: the DOM lib types `self` as a Window.
@@ -13,6 +14,7 @@ const scope = self as unknown as {
 };
 
 const ready = loadCoolProp();
+/** Open fluids by name and reference. */
 const fluids = new Map<string, Fluid>();
 
 function toWire(e: unknown): WireError {
@@ -23,11 +25,12 @@ function toWire(e: unknown): WireError {
 
 async function handle(req: Request): Promise<unknown> {
   const cp = await ready;
-  const open = (name: string) => {
-    let fluid = fluids.get(name);
+  const open = (name: string, reference: ReferenceState) => {
+    const key = `${name}|${reference}`;
+    let fluid = fluids.get(key);
     if (!fluid) {
-      fluid = cp.fluid(name);
-      fluids.set(name, fluid);
+      fluid = cp.fluid(name, { reference });
+      fluids.set(key, fluid);
     }
     return fluid;
   };
@@ -44,15 +47,20 @@ async function handle(req: Request): Promise<unknown> {
         diagrams: [...cp.diagrams()],
       } satisfies InitResult;
     case "fluid": {
-      const f = open(req.name);
-      return { name: f.name, data: f.data, critical: f.critical } satisfies FluidResult;
+      const f = open(req.name, req.reference);
+      return {
+        name: f.name,
+        data: f.data,
+        critical: f.critical,
+        reference: f.reference,
+      } satisfies FluidResult;
     }
     case "state":
-      return open(req.fluid).state(req.inputs);
+      return open(req.fluid, req.reference).state(req.inputs);
     case "diagram":
-      return open(req.fluid).diagram(req.request);
+      return open(req.fluid, req.reference).diagram(req.request);
     case "states":
-      return open(req.fluid)
+      return open(req.fluid, req.reference)
         .states(req.inputs)
         .map((r) =>
           r instanceof CoolPropError ? { error: { kind: r.kind, message: r.message } } : { ok: r },

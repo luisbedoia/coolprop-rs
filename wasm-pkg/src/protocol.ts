@@ -12,6 +12,7 @@ import type {
   PhaseInfo,
   PlotPropertyInfo,
   PropertyInfo,
+  ReferenceState,
   State,
   StateInputs,
 } from "./types.js";
@@ -21,10 +22,22 @@ export type RequestBody = Request extends infer R ? (R extends unknown ? Omit<R,
 
 export type Request =
   | { id: number; method: "init" }
-  | { id: number; method: "fluid"; name: string }
-  | { id: number; method: "state"; fluid: string; inputs: StateInputs }
-  | { id: number; method: "states"; fluid: string; inputs: readonly StateInputs[] }
-  | { id: number; method: "diagram"; fluid: string; request: DiagramRequest };
+  | { id: number; method: "fluid"; name: string; reference: ReferenceState }
+  | { id: number; method: "state"; fluid: string; reference: ReferenceState; inputs: StateInputs }
+  | {
+      id: number;
+      method: "states";
+      fluid: string;
+      reference: ReferenceState;
+      inputs: readonly StateInputs[];
+    }
+  | {
+      id: number;
+      method: "diagram";
+      fluid: string;
+      reference: ReferenceState;
+      request: DiagramRequest;
+    };
 
 /** `kind` is absent for failures outside CoolProp (e.g. the module not loading). */
 export interface WireError {
@@ -49,6 +62,7 @@ export interface FluidResult {
   name: string;
   data: FluidData;
   critical: CriticalPoint;
+  reference: ReferenceState;
 }
 
 /** Per-point failures always come from CoolProp, so they carry a `kind`. */

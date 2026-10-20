@@ -102,7 +102,7 @@ dependencies = [
 
 [[package]]
 name = "coolprop"
-version = "0.1.9"
+version = "0.2.0"
 dependencies = [
  "coolprop-sys",
  "num-dual",
@@ -112,7 +112,7 @@ dependencies = [
 
 [[package]]
 name = "coolprop-sys"
-version = "0.1.9"
+version = "0.2.0"
 dependencies = [
  "bindgen",
  "cmake",
@@ -126,7 +126,7 @@ dependencies = [
 
 [[package]]
 name = "coolprop-wasm"
-version = "0.1.9"
+version = "0.2.0"
 dependencies = [
  "coolprop",
  "serde",

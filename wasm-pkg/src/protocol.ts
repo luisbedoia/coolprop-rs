@@ -9,6 +9,7 @@ import type {
   FluidData,
   InputInfo,
   InputName,
+  Locale,
   PhaseInfo,
   PlotPropertyInfo,
   PropertyInfo,
@@ -21,7 +22,7 @@ import type {
 export type RequestBody = Request extends infer R ? (R extends unknown ? Omit<R, "id"> : never) : never;
 
 export type Request =
-  | { id: number; method: "init" }
+  | { id: number; method: "init"; locale: Locale }
   | { id: number; method: "fluid"; name: string; reference: ReferenceState }
   | { id: number; method: "state"; fluid: string; reference: ReferenceState; inputs: StateInputs }
   | {

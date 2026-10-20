@@ -34,6 +34,16 @@ describe("loadCoolPropWorker", () => {
     expect(cp.diagrams()).toEqual(sync.diagrams());
   });
 
+  it("gives its texts in the locale it was loaded with", async () => {
+    const es = await loadCoolPropWorker({ locale: "es" });
+    try {
+      expect(es.phases().find((p) => p.name === "two_phase")?.label).toBe("bifásico");
+      expect(es.inputs()[0].description).toBe("Presión");
+    } finally {
+      es.terminate();
+    }
+  });
+
   it("solves the same states as the sync API", async () => {
     const water = await cp.fluid("H2O");
     expect(water.name).toBe("Water");

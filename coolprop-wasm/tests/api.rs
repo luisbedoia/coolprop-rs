@@ -118,7 +118,7 @@ fn states_batch_reports_each_point() {
 
 #[test]
 fn schema_describes_inputs_pairs_properties_and_phases() {
-    let v: Value = serde_json::from_str(&coolprop_wasm::schema()).unwrap();
+    let v: Value = serde_json::from_str(&coolprop_wasm::schema("null")).unwrap();
     let schema = ok(&v);
     let quality = schema["inputs"]
         .as_array()
@@ -155,7 +155,7 @@ fn schema_describes_inputs_pairs_properties_and_phases() {
 
 #[test]
 fn schema_describes_the_diagram_catalog() {
-    let v: Value = serde_json::from_str(&coolprop_wasm::schema()).unwrap();
+    let v: Value = serde_json::from_str(&coolprop_wasm::schema("null")).unwrap();
     let schema = ok(&v);
     assert_eq!(schema["plot_properties"].as_array().unwrap().len(), 7);
     let diagrams = schema["diagrams"].as_array().unwrap();
@@ -375,4 +375,17 @@ fn diagrams_follow_the_reference() {
     };
     // The same dome, shifted by the offset between the references.
     assert!(dome_h("DEF") - dome_h("ASHRAE") > 1e5);
+}
+
+#[test]
+fn schema_texts_follow_the_locale() {
+    let es = call(coolprop_wasm::schema, json!({"locale": "es"}));
+    let es = ok(&es);
+    assert_eq!(es["phases"][6]["label"], "bifásico");
+    assert_eq!(es["inputs"][0]["description"], "Presión");
+    assert_eq!(es["inputs"][0]["symbol"], "p");
+    let en = call(coolprop_wasm::schema, json!({}));
+    assert_eq!(ok(&en)["phases"][6]["label"], "two-phase");
+    let bad = call(coolprop_wasm::schema, json!({"locale": "fr"}));
+    assert_eq!(error_kind(&bad), "invalid_input");
 }

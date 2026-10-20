@@ -3,10 +3,12 @@
 //! phases it can be in. Meant for building UIs from data instead of copying
 //! these lists by hand.
 //!
-//! Units are SI; an empty `unit` means dimensionless. Texts are English;
-//! labels and unit conversion are up to the application.
+//! Units are SI; an empty `unit` means dimensionless. Descriptions and
+//! labels come in the requested [`Locale`]; names, symbols and units do not
+//! change with it. Unit conversion is up to the application.
 
 use crate::input::{InputKind, PAIRS};
+use crate::locale::{Locale, Text, text};
 use crate::phase::Phase;
 use crate::plot::{Axis, Diagram, PlotProperty};
 
@@ -60,38 +62,59 @@ pub struct PhaseInfo {
 }
 
 /// Every input, in [`InputKind::ALL`] order.
-pub fn inputs() -> &'static [InputInfo] {
+pub fn inputs(locale: Locale) -> &'static [InputInfo] {
     use InputKind::*;
     const fn input(
+        locale: Locale,
         name: InputKind,
         symbol: &'static str,
         unit: &'static str,
-        description: &'static str,
+        description: Text,
     ) -> InputInfo {
         InputInfo {
             name,
             symbol,
             unit,
-            description,
+            description: locale.pick(description),
             min: None,
             max: None,
         }
     }
-    const INPUTS: [InputInfo; 7] = [
-        input(Pressure, "p", "Pa", "Pressure"),
-        input(Temperature, "T", "K", "Temperature"),
-        input(Density, "ρ", "kg/m³", "Mass density"),
-        input(Enthalpy, "h", "J/kg", "Specific enthalpy"),
-        input(Entropy, "s", "J/(kg·K)", "Specific entropy"),
-        input(InternalEnergy, "u", "J/kg", "Specific internal energy"),
-        InputInfo {
-            min: Some(0.0),
-            max: Some(1.0),
-            ..input(Quality, "x", "", "Vapor quality (vapor mass fraction)")
-        },
-    ];
-    &INPUTS
+    const fn table(l: Locale) -> [InputInfo; 7] {
+        [
+            input(l, Pressure, "p", "Pa", PRESSURE),
+            input(l, Temperature, "T", "K", TEMPERATURE),
+            input(l, Density, "ρ", "kg/m³", DENSITY),
+            input(l, Enthalpy, "h", "J/kg", ENTHALPY),
+            input(l, Entropy, "s", "J/(kg·K)", ENTROPY),
+            input(l, InternalEnergy, "u", "J/kg", INTERNAL_ENERGY),
+            InputInfo {
+                min: Some(0.0),
+                max: Some(1.0),
+                ..input(
+                    l,
+                    Quality,
+                    "x",
+                    "",
+                    text(
+                        "Vapor quality (vapor mass fraction)",
+                        "Calidad del vapor (fracción másica de vapor)",
+                    ),
+                )
+            },
+        ]
+    }
+    const INPUTS: [[InputInfo; 7]; Locale::ALL.len()] = [table(Locale::En), table(Locale::Es)];
+    &INPUTS[locale as usize]
 }
+
+// Texts shared by inputs, state properties and plot properties.
+const PRESSURE: Text = text("Pressure", "Presión");
+const TEMPERATURE: Text = text("Temperature", "Temperatura");
+const DENSITY: Text = text("Mass density", "Densidad");
+const ENTHALPY: Text = text("Specific enthalpy", "Entalpía específica");
+const ENTROPY: Text = text("Specific entropy", "Entropía específica");
+const INTERNAL_ENERGY: Text = text("Specific internal energy", "Energía interna específica");
 
 /// Every pair of inputs that fixes a state. Order within a pair does not
 /// matter to [`Fluid::state`](crate::Fluid::state).
@@ -101,13 +124,14 @@ pub fn pairs() -> impl ExactSizeIterator<Item = (InputKind, InputKind)> {
 
 /// Every numeric property of a [`State`](crate::State), in field order.
 /// (`phase` is described by [`phases`].)
-pub fn properties() -> &'static [PropertyInfo] {
+pub fn properties(locale: Locale) -> &'static [PropertyInfo] {
     use PropertyCategory::*;
     const fn prop(
+        locale: Locale,
         name: &'static str,
         symbol: &'static str,
         unit: &'static str,
-        description: &'static str,
+        description: Text,
         nullable: bool,
         category: PropertyCategory,
     ) -> PropertyInfo {
@@ -115,121 +139,141 @@ pub fn properties() -> &'static [PropertyInfo] {
             name,
             symbol,
             unit,
-            description,
+            description: locale.pick(description),
             nullable,
             category,
         }
     }
-    const PROPERTIES: [PropertyInfo; 15] = [
-        prop("pressure", "p", "Pa", "Pressure", false, Thermodynamic),
-        prop("temperature", "T", "K", "Temperature", false, Thermodynamic),
-        prop(
-            "density",
-            "ρ",
-            "kg/m³",
-            "Mass density",
-            false,
-            Thermodynamic,
-        ),
-        prop(
-            "enthalpy",
-            "h",
-            "J/kg",
-            "Specific enthalpy",
-            false,
-            Thermodynamic,
-        ),
-        prop(
-            "entropy",
-            "s",
-            "J/(kg·K)",
-            "Specific entropy",
-            false,
-            Thermodynamic,
-        ),
-        prop(
-            "internal_energy",
-            "u",
-            "J/kg",
-            "Specific internal energy",
-            false,
-            Thermodynamic,
-        ),
-        prop(
-            "quality",
-            "x",
-            "",
-            "Vapor quality; only inside the two-phase region",
-            true,
-            Thermodynamic,
-        ),
-        prop(
-            "cp",
-            "cp",
-            "J/(kg·K)",
-            "Specific heat at constant pressure",
-            true,
-            Thermodynamic,
-        ),
-        prop(
-            "cv",
-            "cv",
-            "J/(kg·K)",
-            "Specific heat at constant volume",
-            true,
-            Thermodynamic,
-        ),
-        prop(
-            "viscosity",
-            "μ",
-            "Pa·s",
-            "Dynamic viscosity",
-            true,
-            Transport,
-        ),
-        prop(
-            "conductivity",
-            "λ",
-            "W/(m·K)",
-            "Thermal conductivity",
-            true,
-            Transport,
-        ),
-        prop("prandtl", "Pr", "", "Prandtl number", true, Transport),
-        prop(
-            "gibbs",
-            "g",
-            "J/kg",
-            "Specific Gibbs energy",
-            true,
-            Thermodynamic,
-        ),
-        prop(
-            "compressibility",
-            "Z",
-            "",
-            "Compressibility factor pv/(RT)",
-            true,
-            Thermodynamic,
-        ),
-        prop(
-            "speed_of_sound",
-            "a",
-            "m/s",
-            "Speed of sound",
-            true,
-            Thermodynamic,
-        ),
-    ];
-    &PROPERTIES
+    const fn table(l: Locale) -> [PropertyInfo; 15] {
+        [
+            prop(l, "pressure", "p", "Pa", PRESSURE, false, Thermodynamic),
+            prop(
+                l,
+                "temperature",
+                "T",
+                "K",
+                TEMPERATURE,
+                false,
+                Thermodynamic,
+            ),
+            prop(l, "density", "ρ", "kg/m³", DENSITY, false, Thermodynamic),
+            prop(l, "enthalpy", "h", "J/kg", ENTHALPY, false, Thermodynamic),
+            prop(l, "entropy", "s", "J/(kg·K)", ENTROPY, false, Thermodynamic),
+            prop(
+                l,
+                "internal_energy",
+                "u",
+                "J/kg",
+                INTERNAL_ENERGY,
+                false,
+                Thermodynamic,
+            ),
+            prop(
+                l,
+                "quality",
+                "x",
+                "",
+                text(
+                    "Vapor quality; only inside the two-phase region",
+                    "Calidad del vapor; solo dentro de la región bifásica",
+                ),
+                true,
+                Thermodynamic,
+            ),
+            prop(
+                l,
+                "cp",
+                "cp",
+                "J/(kg·K)",
+                text(
+                    "Specific heat at constant pressure",
+                    "Calor específico a presión constante",
+                ),
+                true,
+                Thermodynamic,
+            ),
+            prop(
+                l,
+                "cv",
+                "cv",
+                "J/(kg·K)",
+                text(
+                    "Specific heat at constant volume",
+                    "Calor específico a volumen constante",
+                ),
+                true,
+                Thermodynamic,
+            ),
+            prop(
+                l,
+                "viscosity",
+                "μ",
+                "Pa·s",
+                text("Dynamic viscosity", "Viscosidad dinámica"),
+                true,
+                Transport,
+            ),
+            prop(
+                l,
+                "conductivity",
+                "λ",
+                "W/(m·K)",
+                text("Thermal conductivity", "Conductividad térmica"),
+                true,
+                Transport,
+            ),
+            prop(
+                l,
+                "prandtl",
+                "Pr",
+                "",
+                text("Prandtl number", "Número de Prandtl"),
+                true,
+                Transport,
+            ),
+            prop(
+                l,
+                "gibbs",
+                "g",
+                "J/kg",
+                text("Specific Gibbs energy", "Energía de Gibbs específica"),
+                true,
+                Thermodynamic,
+            ),
+            prop(
+                l,
+                "compressibility",
+                "Z",
+                "",
+                text(
+                    "Compressibility factor pv/(RT)",
+                    "Factor de compresibilidad pv/(RT)",
+                ),
+                true,
+                Thermodynamic,
+            ),
+            prop(
+                l,
+                "speed_of_sound",
+                "a",
+                "m/s",
+                text("Speed of sound", "Velocidad del sonido"),
+                true,
+                Thermodynamic,
+            ),
+        ]
+    }
+    const PROPERTIES: [[PropertyInfo; 15]; Locale::ALL.len()] =
+        [table(Locale::En), table(Locale::Es)];
+    &PROPERTIES[locale as usize]
 }
 
 /// Every phase, in [`Phase::ALL`] order.
-pub fn phases() -> impl ExactSizeIterator<Item = PhaseInfo> {
-    Phase::ALL.into_iter().map(|name| PhaseInfo {
+pub fn phases(locale: Locale) -> impl ExactSizeIterator<Item = PhaseInfo> {
+    Phase::ALL.into_iter().map(move |name| PhaseInfo {
         name,
-        label: name.label(),
-        description: name.description(),
+        label: name.label(locale),
+        description: name.description(locale),
     })
 }
 
@@ -244,31 +288,42 @@ pub struct PlotPropertyInfo {
 }
 
 /// Every plottable property, in [`PlotProperty::ALL`] order.
-pub fn plot_properties() -> &'static [PlotPropertyInfo] {
+pub fn plot_properties(locale: Locale) -> &'static [PlotPropertyInfo] {
     use PlotProperty::*;
     const fn info(
+        locale: Locale,
         name: PlotProperty,
         symbol: &'static str,
         unit: &'static str,
-        description: &'static str,
+        description: Text,
     ) -> PlotPropertyInfo {
         PlotPropertyInfo {
             name,
             symbol,
             unit,
-            description,
+            description: locale.pick(description),
         }
     }
-    const PLOT_PROPERTIES: [PlotPropertyInfo; 7] = [
-        info(Pressure, "p", "Pa", "Pressure"),
-        info(Temperature, "T", "K", "Temperature"),
-        info(Density, "ρ", "kg/m³", "Mass density"),
-        info(SpecificVolume, "v", "m³/kg", "Specific volume"),
-        info(Enthalpy, "h", "J/kg", "Specific enthalpy"),
-        info(Entropy, "s", "J/(kg·K)", "Specific entropy"),
-        info(InternalEnergy, "u", "J/kg", "Specific internal energy"),
-    ];
-    &PLOT_PROPERTIES
+    const fn table(l: Locale) -> [PlotPropertyInfo; 7] {
+        [
+            info(l, Pressure, "p", "Pa", PRESSURE),
+            info(l, Temperature, "T", "K", TEMPERATURE),
+            info(l, Density, "ρ", "kg/m³", DENSITY),
+            info(
+                l,
+                SpecificVolume,
+                "v",
+                "m³/kg",
+                text("Specific volume", "Volumen específico"),
+            ),
+            info(l, Enthalpy, "h", "J/kg", ENTHALPY),
+            info(l, Entropy, "s", "J/(kg·K)", ENTROPY),
+            info(l, InternalEnergy, "u", "J/kg", INTERNAL_ENERGY),
+        ]
+    }
+    const PLOT_PROPERTIES: [[PlotPropertyInfo; 7]; Locale::ALL.len()] =
+        [table(Locale::En), table(Locale::Es)];
+    &PLOT_PROPERTIES[locale as usize]
 }
 
 /// A diagram of the catalog.

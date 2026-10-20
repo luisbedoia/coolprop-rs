@@ -1,5 +1,7 @@
 use std::fmt;
 
+use crate::locale::{Locale, text};
+
 /// Phase classification.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -56,30 +58,42 @@ impl Phase {
         }
     }
 
-    /// Short English name for display, e.g. in a table cell: "two-phase".
-    pub const fn label(&self) -> &'static str {
-        match self {
-            Self::Liquid => "liquid",
-            Self::Supercritical => "supercritical",
-            Self::SupercriticalGas => "supercritical gas",
-            Self::SupercriticalLiquid => "supercritical liquid",
-            Self::CriticalPoint => "critical point",
-            Self::Gas => "gas",
-            Self::TwoPhase => "two-phase",
-        }
+    /// Short name for display, e.g. in a table cell: "two-phase".
+    pub const fn label(&self, locale: Locale) -> &'static str {
+        locale.pick(match self {
+            Self::Liquid => text("liquid", "líquido"),
+            Self::Supercritical => text("supercritical", "supercrítico"),
+            Self::SupercriticalGas => text("supercritical gas", "gas supercrítico"),
+            Self::SupercriticalLiquid => text("supercritical liquid", "líquido supercrítico"),
+            Self::CriticalPoint => text("critical point", "punto crítico"),
+            Self::Gas => text("gas", "gas"),
+            Self::TwoPhase => text("two-phase", "bifásico"),
+        })
     }
 
-    /// One-line English description (CoolProp's definition).
-    pub const fn description(&self) -> &'static str {
-        match self {
-            Self::Liquid => "Subcritical liquid",
-            Self::Supercritical => "Supercritical fluid (p > pc, T > Tc)",
-            Self::SupercriticalGas => "Supercritical gas (p < pc, T > Tc)",
-            Self::SupercriticalLiquid => "Supercritical liquid (p > pc, T < Tc)",
-            Self::CriticalPoint => "At the critical point",
-            Self::Gas => "Subcritical gas",
-            Self::TwoPhase => "Liquid-vapor mixture inside the saturation dome",
-        }
+    /// One-line description (CoolProp's definition).
+    pub const fn description(&self, locale: Locale) -> &'static str {
+        locale.pick(match self {
+            Self::Liquid => text("Subcritical liquid", "Líquido subcrítico"),
+            Self::Supercritical => text(
+                "Supercritical fluid (p > pc, T > Tc)",
+                "Fluido supercrítico (p > pc, T > Tc)",
+            ),
+            Self::SupercriticalGas => text(
+                "Supercritical gas (p < pc, T > Tc)",
+                "Gas supercrítico (p < pc, T > Tc)",
+            ),
+            Self::SupercriticalLiquid => text(
+                "Supercritical liquid (p > pc, T < Tc)",
+                "Líquido supercrítico (p > pc, T < Tc)",
+            ),
+            Self::CriticalPoint => text("At the critical point", "En el punto crítico"),
+            Self::Gas => text("Subcritical gas", "Gas subcrítico"),
+            Self::TwoPhase => text(
+                "Liquid-vapor mixture inside the saturation dome",
+                "Mezcla líquido-vapor dentro de la campana de saturación",
+            ),
+        })
     }
 }
 

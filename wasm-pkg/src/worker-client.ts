@@ -19,6 +19,7 @@ import type {
   DiagramRequest,
   FluidData,
   FluidOptions,
+  Locale,
   ReferenceState,
   State,
   StateInputs,
@@ -64,6 +65,8 @@ export interface WorkerOptions {
    * import.meta.url), { type: "module" })`.
    */
   worker?: Worker;
+  /** Language of the schema's texts (descriptions, phase labels). Default `"en"`. */
+  locale?: Locale;
 }
 
 /** Starts the worker and loads the wasm module in it. */
@@ -106,7 +109,7 @@ export async function loadCoolPropWorker(options: WorkerOptions = {}): Promise<C
 
   let init: InitResult;
   try {
-    init = await request<InitResult>({ method: "init" });
+    init = await request<InitResult>({ method: "init", locale: options.locale ?? "en" });
   } catch (e) {
     worker.terminate();
     throw e;

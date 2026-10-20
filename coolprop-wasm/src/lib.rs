@@ -16,7 +16,8 @@ use std::rc::Rc;
 use coolprop::plot::{Axis, Diagram, DisplayUnit, Limits, PlotProperty, PropertyPlot};
 use coolprop::schema::{self, DiagramInfo, InputInfo, PhaseInfo, PlotPropertyInfo, PropertyInfo};
 use coolprop::{
-    CriticalPoint, Fluid, FluidData, Input, InputKind, PropsError, Reference, State, Variant,
+    CriticalPoint, Fluid, FluidData, Input, InputKind, Locale, PropsError, Reference, State,
+    Variant,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -32,16 +33,20 @@ pub fn catalog() -> String {
     ok(fluids)
 }
 
-/// `{"ok": {inputs, pairs, properties, phases}}`: the API's own description,
-/// see [`coolprop::schema`].
-pub fn schema() -> String {
-    ok(Schema {
-        inputs: schema::inputs(),
-        pairs: schema::pairs().collect(),
-        properties: schema::properties(),
-        phases: schema::phases().collect(),
-        plot_properties: schema::plot_properties(),
-        diagrams: schema::diagrams(),
+/// Request `{locale?}` (or `null`) → `{"ok": {inputs, pairs, properties, phases,
+/// plot_properties, diagrams}}`: the API's own description, with its texts
+/// in `locale` (`"en"` by default, or `"es"`), see [`coolprop::schema`].
+pub fn schema(request: &str) -> String {
+    respond(request, |req: Option<SchemaRequest>| {
+        let locale = req.map(|r| r.locale).unwrap_or_default();
+        Ok(Schema {
+            inputs: schema::inputs(locale),
+            pairs: schema::pairs().collect(),
+            properties: schema::properties(locale),
+            phases: schema::phases(locale).collect(),
+            plot_properties: schema::plot_properties(locale),
+            diagrams: schema::diagrams(),
+        })
     })
 }
 
@@ -146,6 +151,12 @@ pub fn states(request: &str) -> String {
                 .collect::<Vec<_>>())
         })
     })
+}
+
+#[derive(Deserialize)]
+struct SchemaRequest {
+    #[serde(default)]
+    locale: Locale,
 }
 
 #[derive(Deserialize)]

@@ -23,6 +23,7 @@ import type {
   FluidOptions,
   InputInfo,
   InputName,
+  Locale,
   PhaseInfo,
   PlotPropertyInfo,
   PropertyInfo,
@@ -100,7 +101,7 @@ export interface CoolPropModule {
   _free(ptr: number): void;
   _coolprop_version(): number;
   _coolprop_catalog(): number;
-  _coolprop_schema(): number;
+  _coolprop_schema(request: number): number;
   _coolprop_fluid(request: number): number;
   _coolprop_state(request: number): number;
   _coolprop_states(request: number): number;
@@ -123,6 +124,8 @@ export interface LoadOptions {
   print?: (s: string) => void;
   /** Module stderr. Default: `console.error`. */
   printErr?: (s: string) => void;
+  /** Language of the schema's texts (descriptions, phase labels). Default `"en"`. */
+  locale?: Locale;
 }
 
 /** Loads the wasm module. Load once and share the returned instance. */
@@ -157,7 +160,8 @@ export async function loadCoolProp(options: LoadOptions = {}): Promise<CoolProp>
 
   let catalog: readonly FluidData[] | undefined;
   let schema: Schema | undefined;
-  const getSchema = () => (schema ??= unwrap<Schema>(take(m._coolprop_schema())));
+  const getSchema = () =>
+    (schema ??= unwrap<Schema>(call(m._coolprop_schema, { locale: options.locale ?? "en" })));
 
   return {
     version: () => unwrap<string>(take(m._coolprop_version())),

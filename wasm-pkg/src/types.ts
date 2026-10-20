@@ -16,6 +16,12 @@
  */
 export type ReferenceState = "DEF" | "IIR" | "ASHRAE" | "NBP";
 
+/**
+ * Language of the schema's descriptions and phase labels. Names, symbols
+ * and units are the same in every locale.
+ */
+export type Locale = "en" | "es";
+
 /** How to open a fluid. */
 export interface FluidOptions {
   /** Default `"DEF"`. */
@@ -181,7 +187,7 @@ export interface PropertyInfo {
 
 export interface PhaseInfo {
   name: Phase;
-  /** Short name for display, e.g. "two-phase". */
+  /** Short name for display, e.g. "two-phase" ("bifásico" in `"es"`). */
   label: string;
   description: string;
 }

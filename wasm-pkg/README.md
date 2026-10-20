@@ -75,8 +75,16 @@ cp.phases();      // [{ name: "two_phase", label: "two-phase", description: "Liq
 cp.diagrams();    // [{ id: "pressure_enthalpy", x, y, isolines: ["temperature", ...] }, ...]
 ```
 
-Units are SI and an empty `unit` means dimensionless. Texts are English;
-labels and unit conversion are left to the application.
+Units are SI and an empty `unit` means dimensionless. Descriptions and
+phase labels are English unless the module is loaded with another `locale`
+(`"es"`); names, symbols and units are the same in every locale:
+
+```ts
+const cp = await loadCoolProp({ locale: "es" }); // or loadCoolPropWorker({ locale: "es" })
+cp.phases()[6].label;                             // "bifásico"
+```
+
+Unit conversion is left to the application.
 
 ## Diagrams
 

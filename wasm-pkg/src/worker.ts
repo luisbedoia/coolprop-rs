@@ -3,7 +3,7 @@
  * the main thread and answers requests with the synchronous API.
  */
 
-import { CoolPropError, loadCoolProp, type Fluid } from "./index.js";
+import { CoolPropError, loadCoolProp, type CoolProp, type Fluid } from "./index.js";
 import type { ReferenceState } from "./types.js";
 import type { FluidResult, InitResult, Request, Response, StatesResult, WireError } from "./protocol.js";
 
@@ -13,7 +13,8 @@ const scope = self as unknown as {
   postMessage(message: Response): void;
 };
 
-const ready = loadCoolProp();
+/** Loaded on `init`, the client's first request, in the locale it asks for. */
+let ready: Promise<CoolProp> | undefined;
 /** Open fluids by name and reference. */
 const fluids = new Map<string, Fluid>();
 
@@ -24,7 +25,8 @@ function toWire(e: unknown): WireError {
 }
 
 async function handle(req: Request): Promise<unknown> {
-  const cp = await ready;
+  if (req.method === "init") ready ??= loadCoolProp({ locale: req.locale });
+  const cp = await (ready ??= loadCoolProp());
   const open = (name: string, reference: ReferenceState) => {
     const key = `${name}|${reference}`;
     let fluid = fluids.get(key);

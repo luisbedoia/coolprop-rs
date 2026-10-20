@@ -2,7 +2,7 @@
 
 use coolprop::plot::{Diagram, PlotProperty};
 use coolprop::schema::{self, PropertyCategory};
-use coolprop::{Fluid, Input, InputKind, Phase, PropsError, Variant};
+use coolprop::{Fluid, Input, InputKind, Locale, Phase, PropsError, Variant};
 
 fn water() -> Fluid {
     Fluid::new(Variant::Water).unwrap()
@@ -21,7 +21,10 @@ fn properties_are_exactly_the_state_fields() {
     let s = water()
         .state(Input::Pressure(101_325.0), Input::Temperature(298.15))
         .unwrap();
-    let mut catalog: Vec<&str> = schema::properties().iter().map(|p| p.name).collect();
+    let mut catalog: Vec<&str> = schema::properties(Locale::En)
+        .iter()
+        .map(|p| p.name)
+        .collect();
     catalog.push("phase");
     let mut fields = state_keys(&s);
     let mut catalog_sorted = catalog.clone();
@@ -39,7 +42,10 @@ fn non_nullable_properties_are_always_present() {
         (Input::Pressure(30e6), Input::Temperature(700.0)),
     ] {
         let json = serde_json::to_value(f.state(a, b).unwrap()).unwrap();
-        for p in schema::properties().iter().filter(|p| !p.nullable) {
+        for p in schema::properties(Locale::En)
+            .iter()
+            .filter(|p| !p.nullable)
+        {
             assert!(
                 json[p.name].is_number(),
                 "{} missing for ({a:?}, {b:?})",
@@ -51,7 +57,7 @@ fn non_nullable_properties_are_always_present() {
 
 #[test]
 fn transport_category_holds_transport_properties() {
-    let transport: Vec<&str> = schema::properties()
+    let transport: Vec<&str> = schema::properties(Locale::En)
         .iter()
         .filter(|p| p.category == PropertyCategory::Transport)
         .map(|p| p.name)
@@ -61,13 +67,13 @@ fn transport_category_holds_transport_properties() {
 
 #[test]
 fn inputs_cover_every_kind_in_order() {
-    let names: Vec<InputKind> = schema::inputs().iter().map(|i| i.name).collect();
+    let names: Vec<InputKind> = schema::inputs(Locale::En).iter().map(|i| i.name).collect();
     assert_eq!(names, InputKind::ALL);
     for kind in InputKind::ALL {
         assert_eq!(InputKind::from_name(kind.name()), Some(kind));
         assert_eq!(kind.with_value(1.0).kind(), kind);
     }
-    let quality = schema::inputs()
+    let quality = schema::inputs(Locale::En)
         .iter()
         .find(|i| i.name == InputKind::Quality)
         .unwrap();
@@ -115,14 +121,17 @@ fn pairs_match_what_state_accepts() {
 
 #[test]
 fn phases_cover_every_phase() {
-    let names: Vec<Phase> = schema::phases().map(|p| p.name).collect();
+    let names: Vec<Phase> = schema::phases(Locale::En).map(|p| p.name).collect();
     assert_eq!(names, Phase::ALL);
-    assert!(schema::phases().all(|p| !p.label.is_empty() && !p.description.is_empty()));
+    assert!(schema::phases(Locale::En).all(|p| !p.label.is_empty() && !p.description.is_empty()));
 }
 
 #[test]
 fn plot_properties_cover_every_axis_property_in_order() {
-    let names: Vec<PlotProperty> = schema::plot_properties().iter().map(|p| p.name).collect();
+    let names: Vec<PlotProperty> = schema::plot_properties(Locale::En)
+        .iter()
+        .map(|p| p.name)
+        .collect();
     assert_eq!(names, PlotProperty::ALL);
 }
 
@@ -140,4 +149,46 @@ fn diagram_ids_are_unique_and_resolve_back() {
         assert_eq!(d.isoline_kinds(), info.isolines);
     }
     assert!(ids.contains(&"pressure_enthalpy") && ids.contains(&"temperature_entropy"));
+}
+
+/// Locales change the texts, never what they describe.
+#[test]
+fn every_locale_describes_the_same_api() {
+    let key = |l| {
+        (
+            schema::inputs(l)
+                .iter()
+                .map(|i| (i.name, i.symbol, i.unit, i.min, i.max))
+                .collect::<Vec<_>>(),
+            schema::properties(l)
+                .iter()
+                .map(|p| (p.name, p.symbol, p.unit, p.nullable, p.category))
+                .collect::<Vec<_>>(),
+            schema::phases(l).map(|p| p.name).collect::<Vec<_>>(),
+            schema::plot_properties(l)
+                .iter()
+                .map(|p| (p.name, p.symbol, p.unit))
+                .collect::<Vec<_>>(),
+        )
+    };
+    for l in Locale::ALL {
+        assert_eq!(key(l), key(Locale::En), "{l:?}");
+        assert_eq!(Locale::from_name(l.name()), Some(l));
+        let texts = schema::inputs(l)
+            .iter()
+            .map(|i| i.description)
+            .chain(schema::properties(l).iter().map(|p| p.description))
+            .chain(schema::phases(l).flat_map(|p| [p.label, p.description]))
+            .chain(schema::plot_properties(l).iter().map(|p| p.description));
+        for t in texts {
+            assert!(!t.is_empty(), "empty text in {l:?}");
+        }
+    }
+}
+
+#[test]
+fn spanish_texts_are_spanish() {
+    assert_eq!(schema::properties(Locale::Es)[0].description, "Presión");
+    assert_eq!(Phase::TwoPhase.label(Locale::Es), "bifásico");
+    assert_eq!(Phase::TwoPhase.label(Locale::En), "two-phase");
 }

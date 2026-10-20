@@ -119,6 +119,15 @@ describe("schema", () => {
     expect(viscosity).toMatchObject({ unit: "Pa·s", nullable: true, category: "transport" });
   });
 
+  it("gives its texts in the locale it was loaded with", async () => {
+    const es = await loadCoolProp({ locale: "es" });
+    expect(es.phases().find((p) => p.name === "two_phase")?.label).toBe("bifásico");
+    expect(es.inputs()[0]).toMatchObject({ name: "pressure", symbol: "p", description: "Presión" });
+    expect(es.properties().map((p) => [p.name, p.symbol, p.unit])).toEqual(
+      cp.properties().map((p) => [p.name, p.symbol, p.unit]),
+    );
+  });
+
   it("matches the keys of a solved state", () => {
     const s = cp.fluid("Water").state({ pressure: 101325, temperature: 298.15 });
     const keys = Object.keys(s).filter((k) => k !== "phase");

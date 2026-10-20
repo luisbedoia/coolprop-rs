@@ -34,9 +34,12 @@ mod exports {
         into_c(coolprop_wasm::catalog())
     }
 
+    /// # Safety
+    /// `input` must be null or a NUL-terminated UTF-8 string.
     #[unsafe(no_mangle)]
-    pub extern "C" fn coolprop_schema() -> *mut c_char {
-        into_c(coolprop_wasm::schema())
+    pub unsafe extern "C" fn coolprop_schema(input: *const c_char) -> *mut c_char {
+        // SAFETY: forwarded caller contract.
+        unsafe { with_request(input, coolprop_wasm::schema) }
     }
 
     /// # Safety

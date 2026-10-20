@@ -17,8 +17,9 @@
 export type ReferenceState = "DEF" | "IIR" | "ASHRAE" | "NBP";
 
 /**
- * Language of fluid display names and of the schema's descriptions and
- * phase labels. Names, symbols and units are the same in every locale.
+ * Language of fluid display names, the schema's descriptions and phase
+ * labels, and error messages (CoolProp's own text inside them stays as
+ * CoolProp wrote it). Names, symbols and units are the same in every locale.
  */
 export type Locale = "en" | "es";
 

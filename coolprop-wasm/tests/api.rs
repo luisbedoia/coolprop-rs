@@ -417,3 +417,45 @@ fn fluid_names_follow_the_locale() {
     let water = call(coolprop_wasm::fluid, json!({"fluid": "H2O"}));
     assert_eq!(ok(&water)["data"]["display_name"], "Water");
 }
+
+#[test]
+fn error_messages_follow_the_locale() {
+    let unknown = call(
+        coolprop_wasm::fluid,
+        json!({"fluid": "Unobtainium", "locale": "es"}),
+    );
+    assert_eq!(
+        unknown["error"]["message"],
+        "fluido desconocido: Unobtainium"
+    );
+    let count = call(
+        coolprop_wasm::state,
+        json!({"fluid": "Water", "locale": "es", "inputs": {"pressure": 1e5}}),
+    );
+    assert_eq!(
+        count["error"]["message"],
+        "entrada no válida: se esperaban exactamente dos entradas; se recibieron 1"
+    );
+    let batch = call(
+        coolprop_wasm::states,
+        json!({"fluid": "Water", "locale": "es", "inputs": [{"pressure": 1e5, "quality": "x"}]}),
+    );
+    assert_eq!(
+        ok(&batch)[0]["error"]["message"],
+        "entrada no válida: la entrada `quality` debe ser un número"
+    );
+    // A malformed request is still reported in the locale it gives.
+    let malformed = call(
+        coolprop_wasm::diagram,
+        json!({"fluid": "Water", "locale": "es"}),
+    );
+    assert!(
+        malformed["error"]["message"]
+            .as_str()
+            .unwrap()
+            .starts_with("entrada no válida: solicitud mal formada:"),
+        "{malformed}"
+    );
+    let english = call(coolprop_wasm::fluid, json!({"fluid": "Unobtainium"}));
+    assert_eq!(english["error"]["message"], "unknown fluid: Unobtainium");
+}

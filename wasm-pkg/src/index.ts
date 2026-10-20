@@ -124,7 +124,7 @@ export interface LoadOptions {
   print?: (s: string) => void;
   /** Module stderr. Default: `console.error`. */
   printErr?: (s: string) => void;
-  /** Language of fluid display names and schema texts. Default `"en"`. */
+  /** Language of fluid display names, schema texts and error messages. Default `"en"`. */
   locale?: Locale;
 }
 
@@ -178,7 +178,7 @@ export async function loadCoolProp(options: LoadOptions = {}): Promise<CoolProp>
       const info = unwrap<{ data: FluidData; critical: CriticalPoint; reference: ReferenceState }>(
         call(m._coolprop_fluid, { fluid: name, reference: options.reference ?? "DEF", locale }),
       );
-      const id = { fluid: info.data.name, reference: info.reference };
+      const id = { fluid: info.data.name, reference: info.reference, locale };
       return {
         name: info.data.name,
         data: info.data,

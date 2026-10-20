@@ -1,3 +1,5 @@
+use crate::locale::{Locale, text};
+
 /// One of the two independent properties that fix a state in
 /// [`crate::Fluid::state`]. Values are SI.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -84,6 +86,20 @@ impl InputKind {
     /// Inverse of [`Self::name`].
     pub fn from_name(name: &str) -> Option<Self> {
         Self::ALL.into_iter().find(|k| k.name() == name)
+    }
+
+    /// The input as a word in a sentence: "internal energy", "energía
+    /// interna".
+    pub const fn label(self, locale: Locale) -> &'static str {
+        locale.pick(match self {
+            Self::Pressure => text("pressure", "presión"),
+            Self::Temperature => text("temperature", "temperatura"),
+            Self::Density => text("density", "densidad"),
+            Self::Enthalpy => text("enthalpy", "entalpía"),
+            Self::Entropy => text("entropy", "entropía"),
+            Self::InternalEnergy => text("internal energy", "energía interna"),
+            Self::Quality => text("quality", "calidad"),
+        })
     }
 
     /// This input with a value.

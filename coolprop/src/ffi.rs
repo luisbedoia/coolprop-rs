@@ -5,7 +5,7 @@
 use std::ffi::{CStr, CString, c_char, c_long};
 use std::sync::{Mutex, MutexGuard};
 
-use crate::error::PropsError;
+use crate::error::{Failure, Invalid, PropsError};
 use crate::input::{Input, PAIRS};
 use crate::phase::Phase;
 use crate::property::Property;
@@ -66,11 +66,11 @@ fn call<T>(f: impl FnOnce(*mut c_long, *mut c_char, c_long) -> T) -> Result<T, P
     let value = f(&mut errcode, msg.as_mut_ptr(), ERR_BUF_LEN as c_long);
     if errcode != 0 {
         let msg = c_buf_to_string(&msg);
-        return Err(PropsError::CoolProp(if msg.is_empty() {
+        return Err(PropsError::CoolProp(Failure::CoolProp(if msg.is_empty() {
             last_errstring()
         } else {
             msg
-        }));
+        })));
     }
     Ok(value)
 }
@@ -81,7 +81,7 @@ fn call_finite(f: impl FnOnce(*mut c_long, *mut c_char, c_long) -> f64) -> Resul
     if value.is_finite() {
         Ok(value)
     } else {
-        Err(PropsError::CoolProp(last_errstring()))
+        Err(PropsError::CoolProp(Failure::CoolProp(last_errstring())))
     }
 }
 
@@ -136,10 +136,11 @@ impl AbstractStateHandle {
             return Self::new_locked(backend, fluid);
         }
         set_reference_state(fluid, reference.name()).map_err(|e| {
-            PropsError::InvalidInput(format!(
-                "{fluid} cannot use the {} reference state: {e}",
-                reference.name()
-            ))
+            PropsError::InvalidInput(Invalid::Reference {
+                fluid: fluid.to_owned(),
+                reference,
+                detail: e,
+            })
         })?;
         let handle = Self::new_locked(backend, fluid);
         // Restoring the default cannot fail: it only clears the offsets.
@@ -165,7 +166,7 @@ impl AbstractStateHandle {
             }
         })?;
         if handle < 0 {
-            return Err(PropsError::CoolProp(last_errstring()));
+            return Err(PropsError::CoolProp(Failure::CoolProp(last_errstring())));
         }
         Ok(Self { handle })
     }
@@ -271,7 +272,9 @@ fn input_pair_index(name: &str) -> Result<c_long, PropsError> {
     // SAFETY: `c_name` is NUL-terminated.
     let idx = unsafe { coolprop_sys::get_input_pair_index(c_name.as_ptr()) };
     if idx < 0 {
-        Err(PropsError::CoolProp(format!("unknown input pair: {name}")))
+        Err(PropsError::CoolProp(Failure::CoolProp(format!(
+            "unknown input pair: {name}"
+        ))))
     } else {
         Ok(idx)
     }
@@ -282,7 +285,9 @@ fn param_index(name: &str) -> Result<c_long, PropsError> {
     // SAFETY: `c_name` is NUL-terminated.
     let idx = unsafe { coolprop_sys::get_param_index(c_name.as_ptr()) };
     if idx < 0 {
-        Err(PropsError::CoolProp(format!("unknown parameter: {name}")))
+        Err(PropsError::CoolProp(Failure::CoolProp(format!(
+            "unknown parameter: {name}"
+        ))))
     } else {
         Ok(idx)
     }
@@ -303,11 +308,5 @@ fn resolve_pair(in1: Input, in2: Input) -> Result<(&'static str, f64, f64), Prop
                 None
             }
         })
-        .ok_or_else(|| {
-            PropsError::InvalidInput(format!(
-                "unsupported input pair: ({}, {})",
-                k1.name(),
-                k2.name()
-            ))
-        })
+        .ok_or(PropsError::InvalidInput(Invalid::UnsupportedPair(k1, k2)))
 }

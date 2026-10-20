@@ -65,7 +65,7 @@ export interface WorkerOptions {
    * import.meta.url), { type: "module" })`.
    */
   worker?: Worker;
-  /** Language of fluid display names and schema texts. Default `"en"`. */
+  /** Language of fluid display names, schema texts and error messages. Default `"en"`. */
   locale?: Locale;
 }
 

@@ -3,7 +3,7 @@
 //! keeps every other property and every difference, and leaves the other
 //! sessions (open or opened later) alone.
 
-use coolprop::{Fluid, Input, PropsError, Reference, State, Variant};
+use coolprop::{Fluid, Input, Invalid, PropsError, Reference, State, Variant};
 
 const T0: f64 = 273.15;
 
@@ -93,7 +93,7 @@ fn a_reference_below_the_triple_point_is_refused() {
     for reference in [Reference::Ashrae, Reference::Iir] {
         let err = Fluid::with_reference(Variant::Water, reference).unwrap_err();
         assert!(
-            matches!(&err, PropsError::InvalidInput(m) if m.contains(reference.name())),
+            matches!(&err, PropsError::InvalidInput(Invalid::Reference { reference: r, .. }) if *r == reference),
             "{err}"
         );
     }

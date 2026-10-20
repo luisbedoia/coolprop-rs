@@ -128,6 +128,10 @@ describe("schema", () => {
     );
     expect(es.fluid("H2O").data.display_name).toBe("Agua");
     expect(cp.fluid("H2O").data.display_name).toBe("Water");
+    expect(() => es.fluid("Unobtainium")).toThrowError("fluido desconocido: Unobtainium");
+    expect(() => es.fluid("Water").state({ pressure: 101325, quality: 1.5 })).toThrowError(
+      /^error de CoolProp: /,
+    );
     expect(es.properties().map((p) => [p.name, p.symbol, p.unit])).toEqual(
       cp.properties().map((p) => [p.name, p.symbol, p.unit]),
     );

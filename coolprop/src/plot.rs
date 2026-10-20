@@ -17,7 +17,7 @@
 //! # Ok::<(), coolprop::PropsError>(())
 //! ```
 
-use crate::error::PropsError;
+use crate::error::{Failure, Invalid, PropsError};
 use crate::fluid::Fluid;
 use crate::input::{Input, InputKind};
 use crate::state::State;
@@ -130,9 +130,7 @@ impl Diagram {
     /// thing (including density against specific volume).
     pub fn new(x: PlotProperty, y: PlotProperty) -> Result<Self, PropsError> {
         if x.input_kind() == y.input_kind() {
-            return Err(PropsError::InvalidInput(format!(
-                "a diagram needs two different properties, got {x:?} and {y:?}"
-            )));
+            return Err(PropsError::InvalidInput(Invalid::SameAxes(x, y)));
         }
         Ok(Self {
             x: Axis {
@@ -336,9 +334,9 @@ impl<'a> PropertyPlot<'a> {
             && limits.t_min < limits.t_max
             && limits.p_min < limits.p_max;
         if !ok {
-            return Err(PropsError::InvalidInput(format!(
-                "invalid plot limits: {limits:?}"
-            )));
+            return Err(PropsError::InvalidInput(Invalid::PlotLimits(format!(
+                "{limits:?}"
+            ))));
         }
         let dome = saturation_dome(fluid, dome_points)?;
         Ok(Self {
@@ -637,10 +635,7 @@ fn saturation_dome(fluid: &Fluid, points: usize) -> Result<SaturationDome, Props
         }
     }
     if liquid.len() < 2 {
-        return Err(PropsError::CoolProp(format!(
-            "could not trace the saturation dome of {}",
-            fluid.data().name
-        )));
+        return Err(PropsError::CoolProp(Failure::NoDome(fluid.variant())));
     }
     let crit = fluid.critical();
     if let Ok(apex) = fluid.state(

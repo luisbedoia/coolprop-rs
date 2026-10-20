@@ -1,6 +1,6 @@
 use coolprop_sys::catalog::{FluidData, Variant};
 
-use crate::error::PropsError;
+use crate::error::{Failure, PropsError};
 use crate::ffi::AbstractStateHandle;
 use crate::input::{Input, InputKind};
 use crate::phase::Phase;
@@ -110,21 +110,18 @@ impl Fluid {
     pub fn state(&self, in1: Input, in2: Input) -> Result<State, PropsError> {
         let state = State::solve(&self.handle, in1, in2)?;
         if state.pressure() <= 0.0 {
-            return Err(PropsError::CoolProp(format!(
-                "no state of {} at positive pressure has these inputs",
-                self.data().name
+            return Err(PropsError::CoolProp(Failure::NonPositivePressure(
+                self.variant,
             )));
         }
         let with_pressure = in1.kind() == InputKind::Pressure || in2.kind() == InputKind::Pressure;
         if !self.data().pseudo_pure || with_pressure || self.in_equilibrium(&state, in1, in2)? {
             return Ok(state);
         }
-        Err(PropsError::CoolProp(format!(
-            "{} is a pseudo-pure mixture: CoolProp cannot solve this state from {} and {}; \
-             give the pressure and another property instead",
-            self.data().name,
-            in1.kind().name(),
-            in2.kind().name()
+        Err(PropsError::CoolProp(Failure::PseudoPurePair(
+            self.variant,
+            in1.kind(),
+            in2.kind(),
         )))
     }
 

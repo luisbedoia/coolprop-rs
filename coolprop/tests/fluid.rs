@@ -1,7 +1,7 @@
 //! `Fluid` metadata: catalog constants, the EOS critical point and lookup by
 //! name. Reference values: NIST WebBook.
 
-use coolprop::{Fluid, PropsError, Variant};
+use coolprop::{Fluid, Input, InputKind, PropsError, Variant};
 
 #[track_caller]
 fn assert_close(actual: f64, expected: f64, rel_tol: f64, label: &str) {
@@ -109,4 +109,47 @@ fn pseudo_pure_mixtures_are_flagged_and_never_give_wrong_two_phase_states() {
         .state(Input::Density(s.density()), Input::Quality(0.4))
         .unwrap();
     assert!((back.pressure() / s.pressure() - 1.0).abs() < 1e-6);
+}
+
+#[test]
+fn error_messages_follow_the_locale() {
+    use coolprop::{Failure, Invalid, Locale};
+    let unknown = Fluid::from_name("Unobtainium").unwrap_err();
+    assert_eq!(unknown.to_string(), "unknown fluid: Unobtainium");
+    assert_eq!(
+        unknown.message(Locale::Es),
+        "fluido desconocido: Unobtainium"
+    );
+
+    let water = Fluid::new(Variant::Water).unwrap();
+    let pair = water
+        .state(Input::Temperature(300.0), Input::InternalEnergy(1e5))
+        .unwrap_err();
+    assert_eq!(
+        pair,
+        PropsError::InvalidInput(Invalid::UnsupportedPair(
+            InputKind::Temperature,
+            InputKind::InternalEnergy
+        ))
+    );
+    assert_eq!(
+        pair.to_string(),
+        "invalid input: unsupported input pair: temperature and internal energy"
+    );
+    assert_eq!(
+        pair.message(Locale::Es),
+        "entrada no válida: par de entradas no soportado: temperatura y energía interna"
+    );
+
+    // CoolProp's own text is passed on untranslated, under a translated lead.
+    let coolprop = water
+        .state(Input::Pressure(101_325.0), Input::Quality(1.5))
+        .unwrap_err();
+    let PropsError::CoolProp(Failure::CoolProp(text)) = &coolprop else {
+        panic!("{coolprop:?}")
+    };
+    assert_eq!(
+        coolprop.message(Locale::Es),
+        format!("error de CoolProp: {text}")
+    );
 }

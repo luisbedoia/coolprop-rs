@@ -76,9 +76,10 @@ cp.diagrams();    // [{ id: "pressure_enthalpy", x, y, isolines: ["temperature",
 ```
 
 Units are SI and an empty `unit` means dimensionless. Fluid display names,
-descriptions and phase labels are English unless the module is loaded with
-another `locale` (`"es"`); names, symbols and units are the same in every
-locale:
+descriptions, phase labels and error messages are English unless the module
+is loaded with another `locale` (`"es"`); names, symbols and units are the
+same in every locale. CoolProp's own error text is passed on as CoolProp
+wrote it, after a translated lead ("error de CoolProp: …"):
 
 ```ts
 const cp = await loadCoolProp({ locale: "es" }); // or loadCoolPropWorker({ locale: "es" })

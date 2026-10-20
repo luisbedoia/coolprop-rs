@@ -5,6 +5,10 @@
 //! `{"error": {"kind": "unknown_fluid" | "invalid_input" | "coolprop",
 //! "message": "..."}}`.
 //!
+//! Every request may give a `locale`, `"en"` (default) or `"es"`, for
+//! display names, schema texts and error messages. Only coolprop-rs's own
+//! messages are translated; CoolProp's come as it wrote them.
+//!
 //! Every request naming a `fluid` may also give a `reference`: `"DEF"`
 //! (default), `"IIR"`, `"ASHRAE"` or `"NBP"`, where its enthalpy and entropy
 //! are measured from (see [`Reference`]).
@@ -19,6 +23,7 @@ use coolprop::{
     CriticalPoint, Fluid, FluidData, Input, InputKind, Locale, PropsError, Reference, State,
     Variant,
 };
+use serde::de::IgnoredAny;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
@@ -30,8 +35,7 @@ pub fn version() -> String {
 /// Request `{locale?}` (or `null`) → `{"ok": FluidData[]}`: the curated
 /// catalog, in build order, each with its `display_name` in `locale`.
 pub fn catalog(request: &str) -> String {
-    respond(request, |req: Option<LocaleRequest>| {
-        let locale = req.map(|r| r.locale).unwrap_or_default();
+    respond(request, |_: IgnoredAny, locale| {
         Ok(Variant::ALL
             .iter()
             .map(|&v| LocalizedData::new(v, locale))
@@ -43,8 +47,7 @@ pub fn catalog(request: &str) -> String {
 /// plot_properties, diagrams}}`: the API's own description, with its texts
 /// in `locale` (`"en"` by default, or `"es"`), see [`coolprop::schema`].
 pub fn schema(request: &str) -> String {
-    respond(request, |req: Option<LocaleRequest>| {
-        let locale = req.map(|r| r.locale).unwrap_or_default();
+    respond(request, |_: IgnoredAny, locale| {
         Ok(Schema {
             inputs: schema::inputs(locale),
             pairs: schema::pairs().collect(),
@@ -67,9 +70,9 @@ pub fn schema(request: &str) -> String {
 /// bounds it is rejected as `invalid_input`, so no request can stall the
 /// page.
 pub fn diagram(request: &str) -> String {
-    respond(request, |req: DiagramRequest| {
+    respond(request, |req: DiagramRequest, _| {
         let d = Diagram::from_id(&req.diagram)
-            .ok_or_else(|| PropsError::InvalidInput(format!("unknown diagram: {}", req.diagram)))?;
+            .ok_or_else(|| RequestError::UnknownDiagram(req.diagram.clone()))?;
         req.check_bounds()?;
         with_fluid(&req.fluid, req.reference, |f| {
             let limits = req.limits.unwrap_or_else(|| Limits::default_for(f));
@@ -83,11 +86,7 @@ pub fn diagram(request: &str) -> String {
             for spec in &req.isolines {
                 let kind = parse_kind(&spec.kind)?;
                 if !d.isoline_kinds().contains(&kind) {
-                    return Err(PropsError::InvalidInput(format!(
-                        "{} isolines are not drawn on {}",
-                        kind.name(),
-                        d.id()
-                    )));
+                    return Err(RequestError::IsolinesNotDrawn(kind, d.id()).into());
                 }
                 let values = match (&spec.values, spec.count) {
                     (Some(values), _) => values.clone(),
@@ -126,10 +125,10 @@ pub fn diagram(request: &str) -> String {
 /// Request `{fluid, reference?, locale?}` → `{"ok": {data, critical,
 /// reference}}`, `data` with its `display_name` in `locale`.
 pub fn fluid(request: &str) -> String {
-    respond(request, |req: FluidRequest| {
+    respond(request, |req: FluidRequest, locale| {
         with_fluid(&req.fluid, req.reference, |f| {
             Ok(FluidInfo {
-                data: LocalizedData::new(f.variant(), req.locale),
+                data: LocalizedData::new(f.variant(), locale),
                 critical: f.critical(),
                 reference: f.reference(),
             })
@@ -140,7 +139,7 @@ pub fn fluid(request: &str) -> String {
 /// Request `{fluid, inputs: {<name>: value, <name>: value}}` →
 /// `{"ok": State}`.
 pub fn state(request: &str) -> String {
-    respond(request, |req: StateRequest| {
+    respond(request, |req: StateRequest, _| {
         with_fluid(&req.fluid, req.reference, |f| solve(f, &req.inputs))
     })
 }
@@ -149,21 +148,15 @@ pub fn state(request: &str) -> String {
 /// {"error": ..}, ..]}`: one envelope per input set, so one bad point does
 /// not fail the batch.
 pub fn states(request: &str) -> String {
-    respond(request, |req: StatesRequest| {
+    respond(request, |req: StatesRequest, locale| {
         with_fluid(&req.fluid, req.reference, |f| {
             Ok(req
                 .inputs
                 .iter()
-                .map(|inputs| Envelope::from(solve(f, inputs)))
+                .map(|inputs| Envelope::new(solve(f, inputs), locale))
                 .collect::<Vec<_>>())
         })
     })
-}
-
-#[derive(Deserialize)]
-struct LocaleRequest {
-    #[serde(default)]
-    locale: Locale,
 }
 
 #[derive(Deserialize)]
@@ -171,8 +164,6 @@ struct FluidRequest {
     fluid: String,
     #[serde(default)]
     reference: Reference,
-    #[serde(default)]
-    locale: Locale,
 }
 
 #[derive(Deserialize)]
@@ -229,15 +220,12 @@ fn default_dome_points() -> usize {
 }
 
 impl DiagramRequest {
-    fn check_bounds(&self) -> Result<(), PropsError> {
-        let invalid = |m: String| Err(PropsError::InvalidInput(m));
+    fn check_bounds(&self) -> Result<(), RequestError> {
         if !(2..=MAX_POINTS).contains(&self.points) {
-            return invalid(format!("points must be between 2 and {MAX_POINTS}"));
+            return Err(RequestError::Points);
         }
         if !(3..=MAX_DOME_POINTS).contains(&self.dome_points) {
-            return invalid(format!(
-                "dome_points must be between 3 and {MAX_DOME_POINTS}"
-            ));
+            return Err(RequestError::DomePoints);
         }
         let isolines: usize = self
             .isolines
@@ -248,17 +236,13 @@ impl DiagramRequest {
             })
             .fold(0, usize::saturating_add);
         if isolines > MAX_ISOLINES {
-            return invalid(format!(
-                "at most {MAX_ISOLINES} isolines per request, got {isolines}"
-            ));
+            return Err(RequestError::TooManyIsolines(isolines));
         }
-        let states = isolines.saturating_mul(self.points);
-        if states > MAX_ISOLINE_STATES {
-            return invalid(format!(
-                "at most {MAX_ISOLINE_STATES} isoline states (isolines × points) \
-                 per request, got {isolines} × {} = {states}",
-                self.points
-            ));
+        if isolines.saturating_mul(self.points) > MAX_ISOLINE_STATES {
+            return Err(RequestError::TooManyStates {
+                isolines,
+                points: self.points,
+            });
         }
         Ok(())
     }
@@ -368,11 +352,11 @@ enum Envelope<T> {
     Error(ErrorBody),
 }
 
-impl<T> From<Result<T, PropsError>> for Envelope<T> {
-    fn from(result: Result<T, PropsError>) -> Self {
+impl<T> Envelope<T> {
+    fn new(result: Result<T, ApiError>, locale: Locale) -> Self {
         match result {
             Ok(v) => Self::Ok(v),
-            Err(e) => Self::Error(ErrorBody::from(e)),
+            Err(e) => Self::Error(ErrorBody::new(e, locale)),
         }
     }
 }
@@ -383,16 +367,120 @@ struct ErrorBody {
     message: String,
 }
 
-impl From<PropsError> for ErrorBody {
+impl ErrorBody {
+    fn new(e: ApiError, locale: Locale) -> Self {
+        match e {
+            ApiError::Props(e) => Self {
+                kind: match e {
+                    PropsError::UnknownFluid(_) => "unknown_fluid",
+                    PropsError::InvalidInput(_) => "invalid_input",
+                    PropsError::CoolProp(_) => "coolprop",
+                },
+                message: e.message(locale),
+            },
+            ApiError::Request(e) => Self {
+                kind: "invalid_input",
+                message: match locale {
+                    Locale::Es => format!("entrada no válida: {}", e.message(locale)),
+                    _ => format!("invalid input: {}", e.message(locale)),
+                },
+            },
+        }
+    }
+}
+
+/// Why a request failed: in coolprop, or in the request itself.
+#[derive(Debug)]
+enum ApiError {
+    Props(PropsError),
+    Request(RequestError),
+}
+
+impl From<PropsError> for ApiError {
     fn from(e: PropsError) -> Self {
-        let kind = match e {
-            PropsError::UnknownFluid(_) => "unknown_fluid",
-            PropsError::InvalidInput(_) => "invalid_input",
-            PropsError::CoolProp(_) => "coolprop",
+        Self::Props(e)
+    }
+}
+
+impl From<RequestError> for ApiError {
+    fn from(e: RequestError) -> Self {
+        Self::Request(e)
+    }
+}
+
+/// A request this API cannot take; reported as `invalid_input`.
+#[derive(Debug)]
+enum RequestError {
+    /// Not JSON, or not the request's shape; serde's text, untranslated.
+    Malformed(String),
+    UnknownDiagram(String),
+    IsolinesNotDrawn(InputKind, String),
+    Points,
+    DomePoints,
+    TooManyIsolines(usize),
+    TooManyStates {
+        isolines: usize,
+        points: usize,
+    },
+    InputCount(usize),
+    UnknownInput(String),
+    NotANumber(String),
+}
+
+impl RequestError {
+    fn message(&self, locale: Locale) -> String {
+        let es = locale == Locale::Es;
+        let known = || {
+            let names: Vec<&str> = InputKind::ALL.iter().map(|k| k.name()).collect();
+            names.join(", ")
         };
-        Self {
-            kind,
-            message: e.to_string(),
+        match self {
+            Self::Malformed(e) if es => format!("solicitud mal formada: {e}"),
+            Self::Malformed(e) => format!("malformed request: {e}"),
+            Self::UnknownDiagram(id) if es => format!("diagrama desconocido: {id}"),
+            Self::UnknownDiagram(id) => format!("unknown diagram: {id}"),
+            Self::IsolinesNotDrawn(kind, id) if es => format!(
+                "las isolíneas de {} no se dibujan en {id}",
+                kind.label(locale)
+            ),
+            Self::IsolinesNotDrawn(kind, id) => {
+                format!("{} isolines are not drawn on {id}", kind.label(locale))
+            }
+            Self::Points if es => format!("points debe estar entre 2 y {MAX_POINTS}"),
+            Self::Points => format!("points must be between 2 and {MAX_POINTS}"),
+            Self::DomePoints if es => {
+                format!("dome_points debe estar entre 3 y {MAX_DOME_POINTS}")
+            }
+            Self::DomePoints => format!("dome_points must be between 3 and {MAX_DOME_POINTS}"),
+            Self::TooManyIsolines(n) if es => {
+                format!("como máximo {MAX_ISOLINES} isolíneas por solicitud; se pidieron {n}")
+            }
+            Self::TooManyIsolines(n) => {
+                format!("at most {MAX_ISOLINES} isolines per request, got {n}")
+            }
+            Self::TooManyStates { isolines, points } if es => format!(
+                "como máximo {MAX_ISOLINE_STATES} estados de isolíneas (isolíneas × points) \
+                 por solicitud; se pidieron {isolines} × {points} = {}",
+                isolines * points
+            ),
+            Self::TooManyStates { isolines, points } => format!(
+                "at most {MAX_ISOLINE_STATES} isoline states (isolines × points) \
+                 per request, got {isolines} × {points} = {}",
+                isolines * points
+            ),
+            Self::InputCount(n) if es => {
+                format!("se esperaban exactamente dos entradas; se recibieron {n}")
+            }
+            Self::InputCount(n) => format!("expected exactly two inputs, got {n}"),
+            Self::UnknownInput(name) if es => format!(
+                "entrada desconocida `{name}`; se esperaba una de {}",
+                known()
+            ),
+            Self::UnknownInput(name) => {
+                format!("unknown input `{name}`; expected one of {}", known())
+            }
+            Self::NotANumber(name) if es => format!("la entrada `{name}` debe ser un número"),
+            Self::NotANumber(name) => format!("input `{name}` must be a number"),
         }
     }
 }
@@ -401,16 +489,29 @@ fn ok<T: Serialize>(payload: T) -> String {
     to_json(&Envelope::<T>::Ok(payload))
 }
 
-/// Parses `request`, runs `f` and wraps the outcome in an envelope.
-fn respond<Req, T>(request: &str, f: impl FnOnce(Req) -> Result<T, PropsError>) -> String
+/// Parses `request`, runs `f` with it and its `locale`, and wraps the
+/// outcome in an envelope, any error message in that locale.
+fn respond<Req, T>(request: &str, f: impl FnOnce(Req, Locale) -> Result<T, ApiError>) -> String
 where
     Req: for<'de> Deserialize<'de>,
     T: Serialize,
 {
-    let result = serde_json::from_str(request)
-        .map_err(|e| PropsError::InvalidInput(format!("malformed request: {e}")))
-        .and_then(f);
-    to_json(&Envelope::from(result))
+    let mut locale = Locale::default();
+    let result = parse(request, &mut locale).and_then(|req| f(req, locale));
+    to_json(&Envelope::new(result, locale))
+}
+
+/// Reads `locale` first, so that a malformed rest is reported in it.
+fn parse<Req>(request: &str, locale: &mut Locale) -> Result<Req, ApiError>
+where
+    Req: for<'de> Deserialize<'de>,
+{
+    let malformed = |e: serde_json::Error| RequestError::Malformed(e.to_string());
+    let value: Value = serde_json::from_str(request).map_err(malformed)?;
+    if let Some(l) = value.get("locale") {
+        *locale = Locale::deserialize(l).map_err(malformed)?;
+    }
+    Ok(serde_json::from_value(value).map_err(malformed)?)
 }
 
 fn to_json<T: Serialize>(value: &T) -> String {
@@ -434,8 +535,8 @@ thread_local! {
 fn with_fluid<T>(
     name: &str,
     reference: Reference,
-    f: impl FnOnce(&Fluid) -> Result<T, PropsError>,
-) -> Result<T, PropsError> {
+    f: impl FnOnce(&Fluid) -> Result<T, ApiError>,
+) -> Result<T, ApiError> {
     let variant = Variant::from_name(name).ok_or_else(|| PropsError::UnknownFluid(name.into()))?;
     let key = (variant, reference);
     let cached = FLUIDS.with_borrow(|m| m.get(&key).cloned());
@@ -450,31 +551,22 @@ fn with_fluid<T>(
     f(&fluid)
 }
 
-fn solve(fluid: &Fluid, inputs: &Map<String, Value>) -> Result<State, PropsError> {
+fn solve(fluid: &Fluid, inputs: &Map<String, Value>) -> Result<State, ApiError> {
     let mut parsed = inputs.iter().map(|(k, v)| parse_input(k, v));
     match (parsed.next(), parsed.next(), parsed.next()) {
-        (Some(a), Some(b), None) => fluid.state(a?, b?),
-        _ => Err(PropsError::InvalidInput(format!(
-            "expected exactly two inputs, got {}",
-            inputs.len()
-        ))),
+        (Some(a), Some(b), None) => Ok(fluid.state(a?, b?)?),
+        _ => Err(RequestError::InputCount(inputs.len()).into()),
     }
 }
 
-fn parse_kind(name: &str) -> Result<InputKind, PropsError> {
-    InputKind::from_name(name).ok_or_else(|| {
-        let known: Vec<&str> = InputKind::ALL.iter().map(|k| k.name()).collect();
-        PropsError::InvalidInput(format!(
-            "unknown input `{name}`; expected one of {}",
-            known.join(", ")
-        ))
-    })
+fn parse_kind(name: &str) -> Result<InputKind, RequestError> {
+    InputKind::from_name(name).ok_or_else(|| RequestError::UnknownInput(name.to_owned()))
 }
 
-fn parse_input(name: &str, value: &Value) -> Result<Input, PropsError> {
+fn parse_input(name: &str, value: &Value) -> Result<Input, RequestError> {
     let kind = parse_kind(name)?;
     let v = value
         .as_f64()
-        .ok_or_else(|| PropsError::InvalidInput(format!("input `{name}` must be a number")))?;
+        .ok_or_else(|| RequestError::NotANumber(name.to_owned()))?;
     Ok(kind.with_value(v))
 }

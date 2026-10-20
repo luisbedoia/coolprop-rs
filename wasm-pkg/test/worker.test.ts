@@ -39,7 +39,11 @@ describe("loadCoolPropWorker", () => {
     try {
       expect(es.phases().find((p) => p.name === "two_phase")?.label).toBe("bifásico");
       expect(es.inputs()[0].description).toBe("Presión");
-      expect((await es.fluid("H2O")).data.display_name).toBe("Agua");
+      const water = await es.fluid("H2O");
+      expect(water.data.display_name).toBe("Agua");
+      await expect(water.state({ pressure: 101325, quality: 1.5 })).rejects.toThrow(
+        /^error de CoolProp: /,
+      );
     } finally {
       es.terminate();
     }

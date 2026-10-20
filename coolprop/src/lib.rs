@@ -27,7 +27,7 @@ mod state;
 pub use coolprop_sys::catalog;
 pub use coolprop_sys::catalog::{FluidData, Variant};
 
-pub use error::PropsError;
+pub use error::{Failure, Invalid, PropsError};
 pub use ffi::version;
 pub use fluid::{CriticalPoint, Fluid};
 pub use input::{Input, InputKind};

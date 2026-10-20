@@ -7,7 +7,7 @@ engine compiled to WebAssembly through the `coolprop` Rust crate.
 import { loadCoolProp } from "@luisbedoia/coolprop-rs-wasm";
 
 const cp = await loadCoolProp();          // load once, share the instance
-cp.catalog();                             // curated fluids: name, aliases, molar mass, ...
+cp.catalog();                             // curated fluids: name, display_name, aliases, molar mass, ...
 
 const water = cp.fluid("Water");          // canonical name or alias ("H2O", "R718")
 water.critical.temperature;               // 647.096 K, from the equation of state
@@ -75,12 +75,14 @@ cp.phases();      // [{ name: "two_phase", label: "two-phase", description: "Liq
 cp.diagrams();    // [{ id: "pressure_enthalpy", x, y, isolines: ["temperature", ...] }, ...]
 ```
 
-Units are SI and an empty `unit` means dimensionless. Descriptions and
-phase labels are English unless the module is loaded with another `locale`
-(`"es"`); names, symbols and units are the same in every locale:
+Units are SI and an empty `unit` means dimensionless. Fluid display names,
+descriptions and phase labels are English unless the module is loaded with
+another `locale` (`"es"`); names, symbols and units are the same in every
+locale:
 
 ```ts
 const cp = await loadCoolProp({ locale: "es" }); // or loadCoolPropWorker({ locale: "es" })
+cp.fluid("CO2").data.display_name;                // "Dióxido de carbono" (name stays "CarbonDioxide")
 cp.phases()[6].label;                             // "bifásico"
 ```
 

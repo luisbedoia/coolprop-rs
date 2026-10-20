@@ -14,6 +14,7 @@
 mod error;
 mod ffi;
 mod fluid;
+mod fluid_names;
 mod input;
 mod locale;
 mod phase;

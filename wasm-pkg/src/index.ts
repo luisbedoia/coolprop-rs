@@ -100,7 +100,7 @@ export interface CoolPropModule {
   _malloc(size: number): number;
   _free(ptr: number): void;
   _coolprop_version(): number;
-  _coolprop_catalog(): number;
+  _coolprop_catalog(request: number): number;
   _coolprop_schema(request: number): number;
   _coolprop_fluid(request: number): number;
   _coolprop_state(request: number): number;
@@ -124,7 +124,7 @@ export interface LoadOptions {
   print?: (s: string) => void;
   /** Module stderr. Default: `console.error`. */
   printErr?: (s: string) => void;
-  /** Language of the schema's texts (descriptions, phase labels). Default `"en"`. */
+  /** Language of fluid display names and schema texts. Default `"en"`. */
   locale?: Locale;
 }
 
@@ -158,14 +158,16 @@ export async function loadCoolProp(options: LoadOptions = {}): Promise<CoolProp>
     }
   }
 
+  const locale = options.locale ?? "en";
   let catalog: readonly FluidData[] | undefined;
   let schema: Schema | undefined;
   const getSchema = () =>
-    (schema ??= unwrap<Schema>(call(m._coolprop_schema, { locale: options.locale ?? "en" })));
+    (schema ??= unwrap<Schema>(call(m._coolprop_schema, { locale })));
 
   return {
     version: () => unwrap<string>(take(m._coolprop_version())),
-    catalog: () => (catalog ??= Object.freeze(unwrap<FluidData[]>(take(m._coolprop_catalog())))),
+    catalog: () =>
+      (catalog ??= Object.freeze(unwrap<FluidData[]>(call(m._coolprop_catalog, { locale })))),
     inputs: () => getSchema().inputs,
     pairs: () => getSchema().pairs,
     properties: () => getSchema().properties,
@@ -174,7 +176,7 @@ export async function loadCoolProp(options: LoadOptions = {}): Promise<CoolProp>
     diagrams: () => getSchema().diagrams,
     fluid(name: string, options: FluidOptions = {}): Fluid {
       const info = unwrap<{ data: FluidData; critical: CriticalPoint; reference: ReferenceState }>(
-        call(m._coolprop_fluid, { fluid: name, reference: options.reference ?? "DEF" }),
+        call(m._coolprop_fluid, { fluid: name, reference: options.reference ?? "DEF", locale }),
       );
       const id = { fluid: info.data.name, reference: info.reference };
       return {

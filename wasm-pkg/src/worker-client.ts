@@ -65,7 +65,7 @@ export interface WorkerOptions {
    * import.meta.url), { type: "module" })`.
    */
   worker?: Worker;
-  /** Language of the schema's texts (descriptions, phase labels). Default `"en"`. */
+  /** Language of fluid display names and schema texts. Default `"en"`. */
   locale?: Locale;
 }
 

@@ -191,4 +191,6 @@ fn spanish_texts_are_spanish() {
     assert_eq!(schema::properties(Locale::Es)[0].description, "Presión");
     assert_eq!(Phase::TwoPhase.label(Locale::Es), "bifásico");
     assert_eq!(Phase::TwoPhase.label(Locale::En), "two-phase");
+    assert_eq!(schema::display_name(Variant::Water, Locale::Es), "Agua");
+    assert_eq!(schema::display_name(Variant::R134a, Locale::Es), "R134a");
 }

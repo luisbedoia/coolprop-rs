@@ -11,6 +11,7 @@ use crate::input::{InputKind, PAIRS};
 use crate::locale::{Locale, Text, text};
 use crate::phase::Phase;
 use crate::plot::{Axis, Diagram, PlotProperty};
+use crate::{Variant, fluid_names};
 
 /// An input that can fix a state.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -59,6 +60,12 @@ pub struct PhaseInfo {
     /// Short name for display, e.g. "two-phase".
     pub label: &'static str,
     pub description: &'static str,
+}
+
+/// The fluid's name for display, e.g. "Carbon dioxide" or "Dióxido de
+/// carbono" for `CarbonDioxide`; refrigerants keep their number ("R134a").
+pub fn display_name(fluid: Variant, locale: Locale) -> &'static str {
+    fluid_names::display_name(fluid.name()).map_or(fluid.name(), |t| locale.pick(t))
 }
 
 /// Every input, in [`InputKind::ALL`] order.

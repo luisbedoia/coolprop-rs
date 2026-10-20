@@ -123,6 +123,11 @@ describe("schema", () => {
     const es = await loadCoolProp({ locale: "es" });
     expect(es.phases().find((p) => p.name === "two_phase")?.label).toBe("bifásico");
     expect(es.inputs()[0]).toMatchObject({ name: "pressure", symbol: "p", description: "Presión" });
+    expect(es.catalog().find((f) => f.name === "CarbonDioxide")?.display_name).toBe(
+      "Dióxido de carbono",
+    );
+    expect(es.fluid("H2O").data.display_name).toBe("Agua");
+    expect(cp.fluid("H2O").data.display_name).toBe("Water");
     expect(es.properties().map((p) => [p.name, p.symbol, p.unit])).toEqual(
       cp.properties().map((p) => [p.name, p.symbol, p.unit]),
     );

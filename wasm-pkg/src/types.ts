@@ -17,8 +17,8 @@
 export type ReferenceState = "DEF" | "IIR" | "ASHRAE" | "NBP";
 
 /**
- * Language of the schema's descriptions and phase labels. Names, symbols
- * and units are the same in every locale.
+ * Language of fluid display names and of the schema's descriptions and
+ * phase labels. Names, symbols and units are the same in every locale.
  */
 export type Locale = "en" | "es";
 
@@ -32,6 +32,11 @@ export interface FluidOptions {
 export interface FluidData {
   /** Canonical CoolProp name. */
   name: string;
+  /**
+   * Name for display in the loaded locale, e.g. "Carbon dioxide" or "Dióxido
+   * de carbono"; refrigerants keep their number ("R134a").
+   */
+  display_name: string;
   /** CAS registry number. */
   cas: string;
   /** Formula in CoolProp's LaTeX-ish notation; empty for pseudo-pure fluids. */

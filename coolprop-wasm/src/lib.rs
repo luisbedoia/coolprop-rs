@@ -27,17 +27,23 @@ pub fn version() -> String {
     ok(coolprop::version())
 }
 
-/// `{"ok": FluidData[]}`: the curated catalog, in build order.
-pub fn catalog() -> String {
-    let fluids: Vec<&FluidData> = Variant::ALL.iter().map(|v| v.data()).collect();
-    ok(fluids)
+/// Request `{locale?}` (or `null`) → `{"ok": FluidData[]}`: the curated
+/// catalog, in build order, each with its `display_name` in `locale`.
+pub fn catalog(request: &str) -> String {
+    respond(request, |req: Option<LocaleRequest>| {
+        let locale = req.map(|r| r.locale).unwrap_or_default();
+        Ok(Variant::ALL
+            .iter()
+            .map(|&v| LocalizedData::new(v, locale))
+            .collect::<Vec<_>>())
+    })
 }
 
 /// Request `{locale?}` (or `null`) → `{"ok": {inputs, pairs, properties, phases,
 /// plot_properties, diagrams}}`: the API's own description, with its texts
 /// in `locale` (`"en"` by default, or `"es"`), see [`coolprop::schema`].
 pub fn schema(request: &str) -> String {
-    respond(request, |req: Option<SchemaRequest>| {
+    respond(request, |req: Option<LocaleRequest>| {
         let locale = req.map(|r| r.locale).unwrap_or_default();
         Ok(Schema {
             inputs: schema::inputs(locale),
@@ -117,12 +123,13 @@ pub fn diagram(request: &str) -> String {
     })
 }
 
-/// Request `{fluid, reference?}` → `{"ok": {data, critical, reference}}`.
+/// Request `{fluid, reference?, locale?}` → `{"ok": {data, critical,
+/// reference}}`, `data` with its `display_name` in `locale`.
 pub fn fluid(request: &str) -> String {
     respond(request, |req: FluidRequest| {
         with_fluid(&req.fluid, req.reference, |f| {
             Ok(FluidInfo {
-                data: f.data(),
+                data: LocalizedData::new(f.variant(), req.locale),
                 critical: f.critical(),
                 reference: f.reference(),
             })
@@ -154,7 +161,7 @@ pub fn states(request: &str) -> String {
 }
 
 #[derive(Deserialize)]
-struct SchemaRequest {
+struct LocaleRequest {
     #[serde(default)]
     locale: Locale,
 }
@@ -164,6 +171,8 @@ struct FluidRequest {
     fluid: String,
     #[serde(default)]
     reference: Reference,
+    #[serde(default)]
+    locale: Locale,
 }
 
 #[derive(Deserialize)]
@@ -328,9 +337,26 @@ struct Schema {
     diagrams: Vec<DiagramInfo>,
 }
 
+/// A fluid's catalog constants and its name for display.
+#[derive(Serialize)]
+struct LocalizedData {
+    #[serde(flatten)]
+    data: &'static FluidData,
+    display_name: &'static str,
+}
+
+impl LocalizedData {
+    fn new(fluid: Variant, locale: Locale) -> Self {
+        Self {
+            data: fluid.data(),
+            display_name: schema::display_name(fluid, locale),
+        }
+    }
+}
+
 #[derive(Serialize)]
 struct FluidInfo {
-    data: &'static FluidData,
+    data: LocalizedData,
     critical: CriticalPoint,
     reference: Reference,
 }

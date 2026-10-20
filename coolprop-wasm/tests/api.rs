@@ -28,7 +28,7 @@ fn version_is_coolprop_8() {
 
 #[test]
 fn catalog_lists_fluids_with_aliases() {
-    let v: Value = serde_json::from_str(&coolprop_wasm::catalog()).unwrap();
+    let v: Value = serde_json::from_str(&coolprop_wasm::catalog("null")).unwrap();
     let water = ok(&v)
         .as_array()
         .unwrap()
@@ -388,4 +388,32 @@ fn schema_texts_follow_the_locale() {
     assert_eq!(ok(&en)["phases"][6]["label"], "two-phase");
     let bad = call(coolprop_wasm::schema, json!({"locale": "fr"}));
     assert_eq!(error_kind(&bad), "invalid_input");
+}
+
+#[test]
+fn fluid_names_follow_the_locale() {
+    let es = call(coolprop_wasm::catalog, json!({"locale": "es"}));
+    let co2 = ok(&es)
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|f| f["name"] == "CarbonDioxide")
+        .unwrap();
+    assert_eq!(co2["display_name"], "Dióxido de carbono");
+    assert_eq!(co2["cas"], "124-38-9");
+    let en = call(coolprop_wasm::catalog, json!({}));
+    assert!(
+        ok(&en)
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|f| f["display_name"].is_string())
+    );
+    let water = call(
+        coolprop_wasm::fluid,
+        json!({"fluid": "H2O", "locale": "es"}),
+    );
+    assert_eq!(ok(&water)["data"]["display_name"], "Agua");
+    let water = call(coolprop_wasm::fluid, json!({"fluid": "H2O"}));
+    assert_eq!(ok(&water)["data"]["display_name"], "Water");
 }

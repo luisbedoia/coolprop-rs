@@ -39,6 +39,7 @@ describe("loadCoolPropWorker", () => {
     try {
       expect(es.phases().find((p) => p.name === "two_phase")?.label).toBe("bifásico");
       expect(es.inputs()[0].description).toBe("Presión");
+      expect((await es.fluid("H2O")).data.display_name).toBe("Agua");
     } finally {
       es.terminate();
     }

@@ -1,6 +1,6 @@
 # Build/test image: Emscripten (CoolProp C++ -> wasm) + Rust.
 # Keep RUST_VERSION in sync with rust-toolchain.toml.
-FROM emscripten/emsdk:6.0.10
+FROM emscripten/emsdk:6.0.13
 
 ARG RUST_VERSION=1.99.0
 

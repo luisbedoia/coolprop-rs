@@ -80,13 +80,14 @@ services:
       # (see coolprop-sys/build/cmake_build.rs), the final link with -Oz.
       # ~20% smaller (~14% gzip) for ~25% slower state solves. Tests keep -O3.
       COOLPROP_WASM_OPT: -Os -flto
-      # -wasm-enable-eh: emcc does not pass it to the LTO code generator, which
-      # then miscompiles C++ try/catch — CoolProp's exceptions escape its C API
-      # and abort the module. The browser suite (test-npm) covers this path.
+      # LTO and C++ exceptions: a miscompiled try/catch lets CoolProp's
+      # exceptions escape its C API and abort the module. Up to emsdk 6.0.10
+      # this needed -Wl,-mllvm,-wasm-enable-eh; LLVM has since dropped that
+      # option and the -exception-model=wasm emcc passes to LTO is enough.
+      # The browser suite (test-npm) covers this path.
       CARGO_TARGET_WASM32_UNKNOWN_EMSCRIPTEN_RUSTFLAGS: >-
         -C link-arg=-Oz
         -C link-arg=-flto
-        -C link-arg=-Wl,-mllvm,-wasm-enable-eh
         -C link-arg=-sALLOW_MEMORY_GROWTH=1
         -C link-arg=-sEXIT_RUNTIME=0
         -C link-arg=-sENVIRONMENT=web,worker
